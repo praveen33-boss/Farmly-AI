@@ -1,0 +1,46 @@
+"use client"
+
+import { ArrowRight, ArrowUpRight, CloudDrizzle, CloudRain, Droplets, Leaf, MapPin, Mic2, MoreHorizontal, Sprout, Store, Sun, Wind } from "lucide-react"
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import type { FarmerProfile, Module } from "./farmly-app"
+
+const forecast = [
+  { day: "Mon", rain: 18, temp: 30 }, { day: "Tue", rain: 32, temp: 29 }, { day: "Wed", rain: 74, temp: 28 },
+  { day: "Thu", rain: 68, temp: 27 }, { day: "Fri", rain: 42, temp: 29 }, { day: "Sat", rain: 20, temp: 31 }, { day: "Sun", rain: 14, temp: 32 },
+]
+
+function MetricCard({ label, value, unit, icon: Icon, tone, footnote }: { label: string; value: string; unit?: string; icon: typeof Sun; tone: string; footnote: string }) {
+  return <div className="metric-card"><div className={`metric-icon ${tone}`}><Icon size={17} strokeWidth={1.8} /></div><span className="metric-label">{label}</span><div className="metric-value">{value}<small>{unit}</small></div><span className="metric-footnote">{footnote}</span></div>
+}
+
+function MiniForecast() {
+  return <div className="mini-forecast"><div className="forecast-head"><div><span className="card-kicker">NEXT 7 DAYS</span><h3>A little rain ahead</h3></div><span className="chart-legend"><i /> Rain chance</span></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><AreaChart data={forecast} margin={{ top: 12, right: 4, bottom: 0, left: -24 }}><defs><linearGradient id="rainFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4d8b52" stopOpacity={0.2} /><stop offset="100%" stopColor="#4d8b52" stopOpacity={0} /></linearGradient></defs><CartesianGrid stroke="#e9ede5" vertical={false} strokeDasharray="3 4" /><XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fill: "#929b8f", fontSize: 11 }} dy={8} /><YAxis domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fill: "#929b8f", fontSize: 10 }} tickFormatter={(value) => `${value}%`} /><Tooltip contentStyle={{ border: "1px solid #e7ebe3", borderRadius: 12, fontSize: 12 }} formatter={(value) => [`${value}%`, "Rain chance"]} /><Area type="monotone" dataKey="rain" stroke="#4d8b52" strokeWidth={3} fill="url(#rainFill)" dot={{ r: 2.5, fill: "#4d8b52", strokeWidth: 0 }} activeDot={{ r: 4, fill: "#164b35", strokeWidth: 0 }} /></AreaChart></ResponsiveContainer></div><div className="chart-caption"><span><CloudRain size={14} /> Highest chance Wednesday</span><strong>74% <ArrowUpRight size={13} /></strong></div></div>
+}
+
+export function DashboardScreen({ profile, onNavigate }: { profile: FarmerProfile; onNavigate: (module: Module) => void }) {
+  return <div className="dashboard-content">
+    <section className="dashboard-top-grid">
+      <div className="field-hero">
+        <img src="/farmly-field.png" alt="Farmer standing in a green paddy field in Jharkhand" />
+        <div className="field-overlay" />
+        <div className="field-copy"><span className="field-caption"><span className="live-dot" /> YOUR FARM, THIS SEASON</span><h2>Good things<br />are growing.</h2><p>Your {profile.crop.toLowerCase()} crop is in its flowering stage. Keep an eye on the rain this week.</p><button className="field-link" onClick={() => onNavigate("planner")}>View crop plan <ArrowRight size={15} /></button></div>
+        <div className="field-location"><MapPin size={13} /> {profile.district}, {profile.state}</div>
+        <div className="crop-stage-card"><div className="crop-stage-icon"><Sprout size={18} /></div><div><span>FIELD 01 · {profile.acres} ACRES</span><strong>{profile.crop} <i>Flowering</i></strong></div><ArrowRight size={15} /></div>
+      </div>
+      <aside className="rain-alert-card"><div className="alert-top"><div className="alert-icon"><CloudDrizzle size={20} /></div><span className="alert-severity"><i /> ACTION NEEDED</span></div><span className="card-kicker">WEATHER ADVISORY</span><h3>Rainfall on the way</h3><p>Rain is expected in the next 36 hours. Hold off on fertilizer and check field drainage.</p><div className="rain-stat"><div><strong>75<small>%</small></strong><span>chance of rain</span></div><div className="rain-stat-divider" /><div><strong>36<small>h</small></strong><span>forecast window</span></div></div><div className="alert-action"><span><span className="action-check">✓</span> Clear field drains today</span><button onClick={() => onNavigate("weather")} aria-label="View weather details"><ArrowRight size={16} /></button></div><small className="updated-time">Updated today · Demo forecast</small></aside>
+    </section>
+    <section className="metric-grid" aria-label="Farm conditions"><MetricCard label="Temperature" value="29°" unit="C" icon={Sun} tone="gold" footnote="Feels like 32°" /><MetricCard label="Rain probability" value="75%" icon={CloudRain} tone="blue" footnote="Next 36 hours" /><MetricCard label="Soil moisture" value="42%" icon={Droplets} tone="mint" footnote="A little below ideal" /><MetricCard label="Farm size" value={profile.acres} unit="acres" icon={Leaf} tone="sage" footnote={`${profile.crop} · Kharif`} /></section>
+    <section className="dashboard-middle-grid">
+      <MiniForecast />
+      <div className="ask-card"><div className="ask-card-header"><div><span className="card-kicker">FARMLY VOICE</span><h3>Questions grow here.</h3><p>Ask anything about your farm—in the language you love.</p></div><div className="ai-spark"><Leaf size={20} /></div></div><button className="voice-launch" onClick={() => onNavigate("voice")}><span className="voice-launch-mic"><Mic2 size={20} /></span><span><strong>Talk to Farmly AI</strong><small>English · हिंदी · తెలుగు · more</small></span><ArrowRight size={17} /></button><div className="prompt-label">A few things you could ask</div><div className="prompt-chips"><button onClick={() => onNavigate("voice")}>Will it rain tomorrow?</button><button onClick={() => onNavigate("voice")}>Help me plan paddy</button></div><span className="demo-note">Demo responses · no live AI connected</span></div>
+    </section>
+    <section className="quick-section"><div className="section-title-row"><div><span className="card-kicker">YOUR NEXT STEP</span><h3>Good farming starts with a good question.</h3></div><button className="text-action" onClick={() => onNavigate("planner")}>Explore all tools <ArrowRight size={14} /></button></div><div className="quick-grid">
+      <button className="quick-card" onClick={() => onNavigate("planner")}><span className="quick-icon quick-green"><Sprout size={19} /></span><span className="quick-card-copy"><strong>Plan a new crop</strong><small>Inputs, costs & a growing timeline</small></span><ArrowRight className="quick-arrow" size={16} /></button>
+      <button className="quick-card" onClick={() => onNavigate("schemes")}><span className="quick-icon quick-yellow"><Leaf size={19} /></span><span className="quick-card-copy"><strong>Find farm support</strong><small>Explore schemes that may fit</small></span><ArrowRight className="quick-arrow" size={16} /></button>
+      <button className="quick-card" onClick={() => onNavigate("soil")}><span className="quick-icon quick-blue"><Droplets size={19} /></span><span className="quick-card-copy"><strong>Check soil health</strong><small>Understand your soil profile</small></span><ArrowRight className="quick-arrow" size={16} /></button>
+      <button className="quick-card" onClick={() => onNavigate("mandi")}><span className="quick-icon quick-pink"><Store size={19} /></span><span className="quick-card-copy"><strong>Compare mandi prices</strong><small>Estimate your net returns</small></span><ArrowRight className="quick-arrow" size={16} /></button>
+    </div></section>
+    <section className="bottom-insight-grid"><div className="market-preview"><div className="section-title-row compact"><div><span className="card-kicker">NEARBY MARKETS · DEMO</span><h3>Today’s paddy prices</h3></div><button className="icon-button" onClick={() => onNavigate("mandi")} aria-label="More mandi prices"><MoreHorizontal size={18} /></button></div><div className="market-preview-row"><div className="market-place"><span className="market-marker">R</span><div><strong>Ranchi Mandi</strong><small>42 km away</small></div></div><strong className="market-price">₹2,350<small>/quintal</small></strong><span className="market-change"><ArrowUpRight size={13} /> 2.4%</span></div><div className="market-preview-row"><div className="market-place"><span className="market-marker light">K</span><div><strong>Khunti Mandi</strong><small>18 km away</small></div></div><strong className="market-price">₹2,280<small>/quintal</small></strong><span className="market-change muted">Near you</span></div><button className="market-footer" onClick={() => onNavigate("mandi")}>Compare all nearby markets <ArrowRight size={14} /></button></div>
+      <div className="today-tip"><div className="tip-top"><span className="tip-icon"><Sun size={17} /></span><span className="card-kicker">A LITTLE FIELD NOTE</span></div><h3>Let the rain do some of the work.</h3><p>With showers likely, this is a good day to clear water channels around your paddy field before the clouds arrive.</p><button onClick={() => onNavigate("weather")}>See your weather outlook <ArrowRight size={14} /></button><div className="tip-decoration"><Wind size={50} strokeWidth={0.9} /></div></div></section>
+  </div>
+}

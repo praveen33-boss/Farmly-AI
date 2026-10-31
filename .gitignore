@@ -1,4 +1,6 @@
 .env
+.env.local
+.env*.local
 venv/
 __pycache__/
 node_modules/
@@ -6,3 +8,5 @@ node_modules/
 .env
 .env.*
 !.env.example
+.next/
+.vercel/
