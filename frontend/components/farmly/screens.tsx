@@ -28,76 +28,214 @@ function SectionHeader({ eyebrow, title, detail }: { eyebrow: string; title: str
 function SampleNotice({ children = "Illustrative demo information · verify with official or local sources before acting." }: { children?: React.ReactNode }) { return <div className="sample-notice"><Info size={15} /><span>{children}</span></div> }
 function MetricBar({ label, value, percent, tone }: { label: string; value: string; percent: number; tone: string }) { return <div className="soil-bar-row"><div><span>{label}</span><strong>{value}</strong></div><div className="soil-bar-track"><i className={tone} style={{ width: `${percent}%` }} /></div></div> }
 
-const voiceResponses = {
-  English: {
-    crop: { original: "Your paddy is in the flowering stage. Check your soil test results and consult your local agriculture officer before deciding on fertilizer.", translation: "Illustrative response · follow locally verified agricultural guidance." },
-    rain: { original: "The demo forecast shows a 75% chance of rain in the next 36 hours. Clear field drains and postpone fertilizer until conditions improve.", translation: "Sample weather guidance only. Check IMD or your local forecast before making decisions." },
-    market: { original: "In this demo, Ramgarh shows ₹2,420 per quintal and Ranchi ₹2,350. Include travel and handling costs before choosing where to sell.", translation: "Prices are illustrative and are not current mandi quotes." },
-    schemes: { original: "PM-KISAN, PMFBY, and Kisan Credit Card may be worth exploring. Final eligibility depends on official rules, current notifications, and your records.", translation: "Check each official portal or contact your district agriculture office." },
-  },
-  Hindi: {
-    crop: { original: "आपकी धान की फसल में फूल आ रहे हैं। खाद का निर्णय लेने से पहले मिट्टी की जांच देखें और स्थानीय कृषि अधिकारी से सलाह लें।", translation: "उदाहरण के लिए उत्तर। स्थानीय कृषि सलाह का पालन करें।" },
-    rain: { original: "डेमो पूर्वानुमान में अगले 36 घंटों में बारिश की 75% संभावना है। खेत की नालियां साफ रखें और मौसम सुधरने तक खाद न डालें।", translation: "यह केवल नमूना जानकारी है। निर्णय से पहले IMD या स्थानीय पूर्वानुमान देखें।" },
-    market: { original: "इस डेमो में रामगढ़ का भाव ₹2,420 और रांची का ₹2,350 प्रति क्विंटल है। बिक्री से पहले यात्रा और अन्य खर्च जोड़ें।", translation: "ये कीमतें केवल उदाहरण हैं, आज के मंडी भाव नहीं।" },
-    schemes: { original: "PM-KISAN, PMFBY और किसान क्रेडिट कार्ड के बारे में जानकारी लें। अंतिम पात्रता सरकारी नियमों और आपके दस्तावेज़ों पर निर्भर है।", translation: "आधिकारिक पोर्टल या जिला कृषि कार्यालय से पुष्टि करें।" },
-  },
-  Telugu: {
-    crop: { original: "మీ వరి పంట పుష్పించే దశలో ఉంది. నేల పరీక్ష ఫలితాలను చూసి, స్థానిక వ్యవసాయ అధికారిని సంప్రదించి ఎరువుల నిర్ణయం తీసుకోండి.", translation: "Your paddy is flowering. Check your soil test and consult your local agriculture officer before deciding on fertilizer." },
-    rain: { original: "డెమో వాతావరణ సూచన ప్రకారం వచ్చే 36 గంటల్లో వర్షానికి 75% అవకాశం ఉంది. పొలంలోని నీటి కాలువలను శుభ్రం చేసి, వర్షం తర్వాత ఎరువుల గురించి నిర్ణయించండి.", translation: "Demo forecast only. Check IMD or your local weather service before making a decision." },
-    market: { original: "ఈ డెమోలో రామ్‌గఢ్ ధర క్వింటాల్‌కు ₹2,420, రాంచీ ధర ₹2,350. అమ్మే ముందు ప్రయాణ ఖర్చులను కూడా లెక్కించండి.", translation: "These are illustrative values, not current mandi prices." },
-    schemes: { original: "PM-KISAN, PMFBY, కిసాన్ క్రెడిట్ కార్డ్ పథకాల గురించి తెలుసుకోండి. తుది అర్హత ప్రభుత్వ నిబంధనలు, తాజా ప్రకటనలు, మీ పత్రాలపై ఆధారపడి ఉంటుంది.", translation: "Check the official portal or ask your district agriculture office." },
-  },
-} as const
-
-type VoiceLanguage = keyof typeof voiceResponses
-
-export function VoiceScreen({ language }: { language: string }) {
+export function VoiceScreen({ language, profile }: { language: string; profile: FarmerProfile }) {
   const [listening, setListening] = useState(false)
   const [query, setQuery] = useState("")
   const [answer, setAnswer] = useState("")
   const [answerTranslation, setAnswerTranslation] = useState("")
   const [recognized, setRecognized] = useState("")
   const [speaking, setSpeaking] = useState(false)
-  const recognitionRef = useRef<{ start: () => void; stop: () => void } | null>(null)
-  const languageKey: VoiceLanguage = language === "తెలుగు" ? "Telugu" : language === "हिंदी" ? "Hindi" : "English"
-  const handleAsk = (text = query) => {
-    if (!text.trim()) return
-    setRecognized(text)
-    const normalized = text.toLowerCase()
-    const category = /rain|weather|వర్ష|बारिश/.test(normalized) ? "rain" : /mandi|market|price|sell|ధర|మండి|बाज़ार|मंडी|भाव/.test(normalized) ? "market" : /scheme|subsid|support|కిసాన్|పథక|योजना|सब्सिडी/.test(normalized) ? "schemes" : "crop"
-    const response = voiceResponses[languageKey][category]
-    setAnswer(response.original)
-    setAnswerTranslation(response.translation)
+  const [loading, setLoading] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const [error, setError] = useState("")
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const languageKey = language === "తెలుగు" ? "Telugu"
+    : language === "हिंदी" ? "Hindi"
+    : language === "मराठी" ? "Marathi"
+    : language === "தமிழ்" ? "Tamil"
+    : language === "ਪੰਜਾਬੀ" ? "Punjabi"
+    : language
+  const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+  const handleAsk = async (text = query) => {
+    const question = text.trim()
+    if (!question || loading) return
+    setRecognized(question)
     setQuery("")
+    setError("")
+    setAnswer("")
+    setAnswerTranslation("")
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: question,
+          language: languageKey,
+          crop: profile.crop,
+          location: `${profile.village}, ${profile.district}, ${profile.state}`,
+          soil: profile.soil,
+          irrigation: profile.irrigation,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail || "Could not get an answer from Farmly AI.")
+      setAnswer(data.answer || "I couldn't prepare an answer. Please try again.")
+      setAnswerTranslation(data.english_translation || data.answer || "")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to connect to Farmly AI.")
+    } finally {
+      setLoading(false)
+    }
   }
-  const toggleListening = () => {
-    if (listening) { recognitionRef.current?.stop(); setListening(false); return }
-    const SpeechRecognitionConstructor = (window as Window & { SpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void }; webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void } }).SpeechRecognition || (window as Window & { webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void } }).webkitSpeechRecognition
-    if (!SpeechRecognitionConstructor) { setAnswer("Voice recognition is not supported in this browser. You can type your question below."); return }
-    const recognition = new SpeechRecognitionConstructor()
-    recognition.lang = languageKey === "Telugu" ? "te-IN" : languageKey === "Hindi" ? "hi-IN" : "en-IN"
-    recognition.interimResults = false
-    recognition.onresult = (event) => handleAsk(event.results[0][0].transcript)
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => setListening(false)
-    recognitionRef.current = recognition
-    recognition.start()
-    setListening(true)
+
+  const toggleListening = async () => {
+    if (listening && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop()
+      setListening(false)
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("This browser does not support microphone recording. Type your question instead.")
+      return
+    }
+    try {
+      setError("")
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioChunksRef.current = []
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm"
+      const recorder = new MediaRecorder(stream, { mimeType })
+      mediaRecorderRef.current = recorder
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data)
+      }
+      recorder.onerror = () => {
+        setError("Microphone recording failed. Please try again.")
+        setListening(false)
+        stream.getTracks().forEach((track) => track.stop())
+      }
+      recorder.onstop = async () => {
+        setListening(false)
+        setTranscribing(true)
+        stream.getTracks().forEach((track) => track.stop())
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
+        audioChunksRef.current = []
+        if (!audioBlob.size) {
+          setTranscribing(false)
+          setError("No audio was captured. Please try speaking again.")
+          return
+        }
+        try {
+          const formData = new FormData()
+          formData.append("audio", audioBlob, "farmer-question.webm")
+          const response = await fetch(
+            `${API_URL}/voice/transcribe?language=${encodeURIComponent(languageKey)}`,
+            { method: "POST", body: formData },
+          )
+          const data = await response.json()
+          if (!response.ok) throw new Error(data.detail || "Speech transcription failed.")
+          if (!data.transcript?.trim()) throw new Error("I couldn't understand the recording. Please try again.")
+          await handleAsk(data.transcript)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Unable to transcribe your voice.")
+        } finally {
+          setTranscribing(false)
+          mediaRecorderRef.current = null
+        }
+      }
+      recorder.start()
+      setListening(true)
+    } catch (err) {
+      setError(err instanceof Error && err.name === "NotAllowedError"
+        ? "Please allow microphone access in your browser."
+        : "Could not start the microphone. Check that it is connected and try again.")
+    }
   }
-  const speak = () => {
-    if (!answer || !("speechSynthesis" in window)) return
-    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return }
-    const utterance = new SpeechSynthesisUtterance(answer)
-    utterance.lang = languageKey === "Telugu" ? "te-IN" : languageKey === "Hindi" ? "hi-IN" : "en-IN"
-    utterance.onend = () => setSpeaking(false)
-    window.speechSynthesis.speak(utterance)
-    setSpeaking(true)
+
+  const speak = async () => {
+    if (!answer) return
+    if (speaking) {
+      audioRef.current?.pause()
+      audioRef.current = null
+      setSpeaking(false)
+      return
+    }
+    setError("")
+    try {
+      const response = await fetch(`${API_URL}/voice/speak`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: answer, language: languageKey }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.detail || "Could not generate audio.")
+      }
+      const audioBlob = await response.blob()
+      const audioUrl = URL.createObjectURL(audioBlob)
+      const audio = new Audio(audioUrl)
+      audioRef.current = audio
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl)
+        audioRef.current = null
+        setSpeaking(false)
+      }
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl)
+        audioRef.current = null
+        setSpeaking(false)
+        setError("Audio playback failed. Please try again.")
+      }
+      await audio.play()
+      setSpeaking(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to play the response.")
+      setSpeaking(false)
+    }
   }
+
   return <div className="module-layout voice-layout">
-    <div className="voice-primary"><Card className="voice-stage-card"><div className="voice-stage-top"><span className="status-pill"><span className="status-dot" /> DEMO ASSISTANT</span><span className="voice-language-pill">Speaking in <strong>{language}</strong></span></div><div className={`voice-orbit ${listening ? "is-listening" : ""}`}><div className="orbit-ring orbit-one" /><div className="orbit-ring orbit-two" /><div className="orbit-ring orbit-three" /><button className={`big-mic ${listening ? "mic-listening" : ""}`} onClick={toggleListening} aria-label={listening ? "Stop listening" : "Start voice input"}>{listening ? <MicOff size={29} /> : <Mic size={29} />}</button><div className="voice-wave"><i /><i /><i /><i /><i /><i /><i /></div></div><p className="voice-state">{listening ? "I’m listening… go ahead" : "Tap the mic and tell me what’s on your mind"}</p><p className="voice-subtext">Try asking in English, हिंदी, or తెలుగు</p><div className="voice-compose"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229) handleAsk() }} placeholder="Or type your question here…" aria-label="Type your farming question" /><button onClick={() => handleAsk()} aria-label="Send question"><Send size={17} /></button></div></Card>
-      {answer && <Card className="voice-answer"><div className="answer-heading"><div className="ai-avatar"><Leaf size={17} /></div><div><strong>Farmly AI <span>DEMO RESPONSE</span></strong><small>Based on your paddy crop profile</small></div><button className="icon-button" onClick={speak} aria-label={speaking ? "Stop audio" : "Play response aloud"}>{speaking ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div><div className="question-echo"><span>YOU ASKED</span><p>{recognized}</p></div><p className="answer-original">{answer}</p><div className="answer-translation"><span>ENGLISH TRANSLATION</span><p>{answerTranslation}</p></div><div className="answer-caution"><Info size={14} /> Illustrative response only. Confirm crop decisions with a local agriculture expert.</div></Card>}
+    <div className="voice-primary">
+      <Card className="voice-stage-card">
+        <div className="voice-stage-top">
+          <span className="status-pill"><span className="status-dot" /> LIVE AI ASSISTANT</span>
+          <span className="voice-language-pill">Speaking in <strong>{language}</strong></span>
+        </div>
+        <div className={`voice-orbit ${listening ? "is-listening" : ""}`}>
+          <div className="orbit-ring orbit-one" /><div className="orbit-ring orbit-two" /><div className="orbit-ring orbit-three" />
+          <button className={`big-mic ${listening ? "mic-listening" : ""}`} onClick={toggleListening} aria-label={listening ? "Stop listening" : "Start voice input"} disabled={loading}>
+            {listening ? <MicOff size={29} /> : <Mic size={29} />}
+          </button>
+          <div className="voice-wave"><i /><i /><i /><i /><i /><i /><i /></div>
+        </div>
+        <p className="voice-state">{loading ? "Farmly is preparing your answer…" : transcribing ? "Converting your voice to text…" : listening ? "I’m listening… tap again when you’re done" : "Tap the mic and tell me what’s on your mind"}</p>
+        <p className="voice-subtext">Ask in English, हिंदी, తెలుగు, मराठी, தமிழ், or ਪੰਜਾਬੀ</p>
+        <div className="voice-compose">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229) void handleAsk()
+          }} placeholder="Or type your question here…" aria-label="Type your farming question" />
+          <button onClick={() => void handleAsk()} aria-label="Send question" disabled={loading || transcribing || !query.trim()}><Send size={17} /></button>
+        </div>
+        {error && <p className="answer-caution" role="alert">{error}</p>}
+      </Card>
+      {(answer || loading) && <Card className="voice-answer">
+        <div className="answer-heading">
+          <div className="ai-avatar"><Leaf size={17} /></div>
+          <div><strong>Farmly AI <span>GROQ POWERED</span></strong><small>Advice based on the farm details available in this demo</small></div>
+          <button className="icon-button" onClick={() => void speak()} aria-label={speaking ? "Stop audio" : "Play response aloud"} disabled={!answer}>{speaking ? <VolumeX size={17} /> : <Volume2 size={17} />}</button>
+        </div>
+        {recognized && <div className="question-echo"><span>YOU ASKED</span><p>{recognized}</p></div>}
+        {loading ? <p className="answer-original">Thinking…</p> : <>
+          <p className="answer-original">{answer}</p>
+          <div className="answer-translation"><span>ENGLISH TRANSLATION</span><p>{answerTranslation}</p></div>
+        </>}
+        <div className="answer-caution"><Info size={14} /> Verify important crop-protection and fertilizer decisions with your local KVK or agriculture officer.</div>
+      </Card>}
     </div>
-    <aside className="voice-sidebar"><Card className="conversation-card"><div className="side-card-title"><div><span className="card-kicker">QUICK QUESTIONS</span><h3>Where shall we start?</h3></div><CircleHelp size={17} /></div><div className="question-list">{["నా వరి పంటకు ఏ ఎరువు వాడాలి?", "Will it rain tomorrow?", "How should I prepare my field?", "Where can I check scheme eligibility?"].map((question) => <button key={question} onClick={() => handleAsk(question)}><span>{question}</span><ArrowRight size={15} /></button>)}</div></Card><Card className="language-info-card"><div className="language-roundel">अ</div><div><strong>Your language, your choice.</strong><p>Change your language from the top of the screen. Voice input depends on browser support.</p></div></Card><SampleNotice>Farmly AI uses preset demonstration responses. No live AI service is connected.</SampleNotice></aside>
+    <aside className="voice-sidebar">
+      <Card className="conversation-card">
+        <div className="side-card-title"><div><span className="card-kicker">QUICK QUESTIONS</span><h3>Where shall we start?</h3></div><CircleHelp size={17} /></div>
+        <div className="question-list">{["నా వరి పంటకు ఏ ఎరువు వాడాలి?", "Will it rain tomorrow?", "How should I prepare my field?", "Where can I check scheme eligibility?"].map((question) => <button key={question} onClick={() => void handleAsk(question)} disabled={loading || transcribing}><span>{question}</span><ArrowRight size={15} /></button>)}</div>
+      </Card>
+      <Card className="language-info-card"><div className="language-roundel">अ</div><div><strong>Your language, your choice.</strong><p>Change your language from the top of the screen. Voice input is transcribed by Sarvam AI.</p></div></Card>
+      <SampleNotice>Live AI answers are generated with Groq. Spoken responses use Sarvam AI.</SampleNotice>
+    </aside>
   </div>
 }
 

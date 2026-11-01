@@ -95,7 +95,7 @@ function Screen({ active, profile, onNavigate, onSaveProfile }: { active: Module
   return <>
     <div className="page-heading"><div><span className="eyebrow">{current.eyebrow}</span><h1>{active === "overview" ? `Namaste, ${profile.name.split(" ")[0]}` : current.title}</h1><p>{active === "overview" ? "Here’s what’s happening on your farm today." : current.description}</p></div><div className="heading-location"><MapPin size={15} /><span>{profile.village}, {profile.district}</span><span className="demo-chip">DEMO DATA</span></div></div>
     {active === "overview" && <DashboardScreen profile={profile} onNavigate={onNavigate} />}
-    {active === "voice" && <VoiceScreen language={profile.language} />}
+    {active === "voice" && <VoiceScreen language={profile.language} profile={profile} />}
     {active === "weather" && <WeatherScreen />}
     {active === "mandi" && <MandiScreen />}
     {active === "soil" && <SoilScreen />}

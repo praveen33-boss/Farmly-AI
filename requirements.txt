@@ -1,5 +1,6 @@
-fastapi
-uvicorn
-requests
-python-dotenv
-groq
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-dotenv>=1.0.1
+python-multipart>=0.0.9
+groq>=0.11.0
+sarvamai>=0.1.29
