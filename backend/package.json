@@ -1,0 +1,22 @@
+{
+  "name": "farmly-backend",
+  "version": "1.0.0",
+  "description": "Farmly.AI Backend for Indian Farmers",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "smoke": "node scripts/smoke-test.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "groq-sdk": "^0.15.0",
+    "jose": "^6.0.8",
+    "zod": "^3.24.2"
+  }
+}

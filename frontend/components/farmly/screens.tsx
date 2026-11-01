@@ -1,17 +1,13 @@
 "use client"
-
+import { useLocation } from "@/lib/location-context";
+import { useWeather } from "@/lib/use-weather";
+import { usePrices, usePriceTrend, type MandiRecord } from "@/lib/use-prices";
+import { LocationSelect } from "./location-select";
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDownWideNarrow, ArrowRight, BadgeCheck, CalendarDays, Check, ChevronDown, CircleHelp, CloudDrizzle, CloudRain, CloudSun, Download, ExternalLink, FileText, Filter, Info, Leaf, MapPin, Mic, MicOff, Play, Plus, Search, Send, ShieldCheck, Sprout, Store, Sun, Volume2, VolumeX, Wind, X } from "lucide-react"
+import { ArrowDownWideNarrow, ArrowRight, BadgeCheck, CalendarDays, Check, ChevronDown, CircleHelp, CloudDrizzle, CloudRain, CloudSun, Download, ExternalLink, FileText, Filter, Info, Leaf, LoaderCircle, MapPin, Mic, MicOff, Play, Plus, RefreshCw, Search, Send, ShieldCheck, Sprout, Store, Sun, Volume2, VolumeX, Wind, X } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import type { FarmerProfile } from "./farmly-app"
 
-type Mandi = { name: string; district: string; price: number; distance: number }
-const markets: Mandi[] = [
-  { name: "Ranchi APMC", district: "Ranchi", price: 2350, distance: 42 },
-  { name: "Khunti Mandi", district: "Khunti", price: 2280, distance: 18 },
-  { name: "Ramgarh Market", district: "Ramgarh", price: 2420, distance: 65 },
-  { name: "Tamar Mandi", district: "Ranchi", price: 2310, distance: 31 },
-]
 const schemeData = [
   { id: "pm-kisan", name: "PM-KISAN", full: "Pradhan Mantri Kisan Samman Nidhi", category: "Income support", type: "Central government", about: "Income support programme for eligible landholding farmer families, subject to scheme guidelines and exclusions.", benefit: "₹6,000 per year", fit: "More information needed", fitReason: "Land records and scheme exclusions need to be checked with the official portal.", url: "https://pmkisan.gov.in/", color: "scheme-green", mark: "₹" },
   { id: "pmfby", name: "PMFBY", full: "Pradhan Mantri Fasal Bima Yojana", category: "Crop insurance", type: "Central government", about: "Crop insurance support against specified non-preventable natural risks, under notified crops and areas.", benefit: "Premium subsidy varies", fit: "Potentially relevant", fitReason: "You grow a notified crop; check current district enrollment dates and crop notification.", url: "https://pmfby.gov.in/", color: "scheme-blue", mark: "✳" },
@@ -101,41 +97,789 @@ export function VoiceScreen({ language }: { language: string }) {
   </div>
 }
 
-const weatherRows = [
-  { day: "Today", date: "Oct 30", icon: "sun", high: "29°", low: "21°", rain: "20%", label: "Partly cloudy" },
-  { day: "Saturday", date: "Oct 31", icon: "showers", high: "28°", low: "20°", rain: "75%", label: "Showers likely" },
-  { day: "Sunday", date: "Nov 1", icon: "rain", high: "27°", low: "20°", rain: "68%", label: "Light rain" },
-  { day: "Monday", date: "Nov 2", icon: "cloudsun", high: "29°", low: "21°", rain: "42%", label: "Clouds & sun" },
-  { day: "Tuesday", date: "Nov 3", icon: "sun", high: "31°", low: "21°", rain: "20%", label: "Mostly sunny" },
-  { day: "Wednesday", date: "Nov 4", icon: "sun", high: "32°", low: "22°", rain: "14%", label: "Sunny" },
-  { day: "Thursday", date: "Nov 5", icon: "cloudsun", high: "31°", low: "21°", rain: "12%", label: "Clouds & sun" },
-]
 export function WeatherScreen() {
   const [period, setPeriod] = useState("7 days")
-  const visibleForecast = period === "3 days" ? weatherRows.slice(0, 3) : weatherRows
-  return <div className="module-layout"><div className="module-main"><div className="weather-summary-grid"><div className="weather-now-card"><div className="weather-place"><MapPin size={14} /> KHUNTI, JHARKHAND <span>DEMO</span></div><div className="weather-now-main"><div><div className="weather-temp">29<span>°</span></div><div className="weather-description">Partly cloudy</div></div><Sun size={59} strokeWidth={1.2} /></div><div className="weather-feels">Feels like 32° <span>·</span> H: 30° L: 21°</div><div className="weather-bottom-stats"><div><DropletsIcon /><span>HUMIDITY</span><strong>78%</strong></div><div><CloudRain size={16} /><span>RAIN CHANCE</span><strong>75%</strong></div><div><Wind size={16} /><span>WIND</span><strong>12 km/h</strong></div></div></div><div className="weather-soil-card"><span className="card-kicker">ON YOUR FARM</span><div className="soil-water-icon"><DropletsIcon /></div><strong>42<small>%</small></strong><span>Soil moisture</span><div className="moisture-track"><i /></div><small className="moisture-note">Below your crop’s preferred range</small><span className="sample-chip">DEMO READING</span></div></div>
-      <Card className="forecast-card"><div className="module-card-heading"><div><span className="card-kicker">LOCAL OUTLOOK · DEMO</span><h3>Coming up in Khunti</h3></div><div className="segmented-control">{["7 days", "3 days"].map((item) => <button key={item} className={period === item ? "selected" : ""} onClick={() => setPeriod(item)}>{item}</button>)}</div></div><div className="forecast-list">{visibleForecast.map((row) => <div className="forecast-row" key={row.day}><div className="forecast-day"><strong>{row.day}</strong><small>{row.date}</small></div><span className="forecast-emoji" aria-hidden="true">{row.icon === "rain" ? <CloudRain size={18} /> : row.icon === "showers" ? <CloudDrizzle size={18} /> : row.icon === "cloudsun" ? <CloudSun size={18} /> : <Sun size={18} />}</span><span className="forecast-label">{row.label}</span><span className="forecast-rain"><DropletsIcon /> {row.rain}</span><div className="forecast-range"><strong>{row.high}</strong><i /><span>{row.low}</span></div></div>)}</div></Card>
-      <Card className="risk-card"><div className="module-card-heading"><div><span className="card-kicker">CROP-SPECIFIC RISK</span><h3>What the weather means for your field</h3></div><span className="risk-badge">MODERATE RISK</span></div><div className="risk-item"><span className="risk-weather-icon"><CloudRain size={19} /></span><div><strong>Heavy rainfall</strong><p>Rain likely within 36 hours may leave water standing around young plants.</p></div><span className="risk-level">Watch</span></div><div className="risk-item"><span className="risk-weather-icon amber"><Wind size={19} /></span><div><strong>Pest-friendly humidity</strong><p>Warm, humid conditions can increase disease pressure. Monitor leaves regularly.</p></div><span className="risk-level risk-low">Low</span></div><div className="recommendation-box"><strong><Check size={15} /> A practical next step</strong><p>Clear drainage channels today. Avoid spraying before rain; follow local crop-protection guidance.</p></div></Card>
-    </div><aside className="module-aside"><Card className="advisory-card"><span className="card-kicker">FARMLY’S FIELD NOTE</span><span className="advisory-icon"><CloudRain size={21} /></span><h3>Rainfall alert</h3><p>Showers are expected in the next 36 hours. A little preparation now can prevent waterlogging later.</p><div className="advisory-action"><Check size={15} /><span>Check field drains & bunds</span></div><div className="advisory-action"><Check size={15} /><span>Postpone fertilizer application</span></div><small>Demo forecast · not a live weather service</small></Card><SampleNotice>Forecast and risk values are illustrative. Check IMD or your local weather service before making time-sensitive decisions.</SampleNotice><Card className="weather-event-card"><span className="card-kicker">WEATHER TIMELINE</span><div className="weather-event"><i /><div><strong>Rain window opens</strong><small>Tomorrow afternoon · illustrative</small></div></div><div className="weather-event"><i /><div><strong>Field check reminder</strong><small>After rainfall · drainage</small></div></div><div className="weather-event"><i /><div><strong>Review crop health</strong><small>Following 2–3 days</small></div></div></Card></aside></div>
+  const { data: wx, error: wxError, loading: wxLoading } = useWeather()
+  const { location, updateLocationFromInput } = useLocation()
+  const [searchInput, setSearchInput] = useState(location.district)
+
+  useEffect(() => {
+    setSearchInput(location.district)
+  }, [location.district])
+
+  if (wxLoading && !wx) {
+    return (
+      <div className="module-layout">
+        <div className="module-main" style={{ padding: "40px 20px" }}>
+          <p>Loading live weather for {location.label}… (first request can take a few seconds)</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!wx && wxError) {
+    return (
+      <div className="module-layout">
+        <div className="module-main" style={{ padding: "20px" }}>
+          <div className="weather-location-bar" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", marginBottom: "16px", padding: "12px", background: "#f8faf7", border: "1px solid #e2e8df", borderRadius: "10px" }}>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (searchInput.trim()) updateLocationFromInput(searchInput.trim())
+              }}
+              style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 260px" }}
+            >
+              <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
+                <Search size={15} style={{ position: "absolute", left: "10px", color: "#6b7280" }} />
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search city or district..."
+                  style={{ width: "100%", padding: "7px 10px 7px 32px", fontSize: "14px", border: "1px solid #c7d2c3", borderRadius: "8px", background: "#fff" }}
+                  aria-label="Location search"
+                />
+              </div>
+              <button type="submit" className="primary-action" style={{ padding: "7px 14px", fontSize: "13px" }}>Search</button>
+            </form>
+          </div>
+          <div style={{ padding: "12px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", color: "#991b1b", fontSize: "14px" }}>
+            Couldn't find that place. Try the district name
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Build forecast rows dynamically from live wx.daily_7day
+  const weatherRows = (wx?.daily_7day || []).map((d: any, idx: number) => {
+    let formattedDate = d.date;
+    try {
+      const parsed = new Date(d.date + "T00:00:00");
+      if (!isNaN(parsed.getTime())) {
+        formattedDate = parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      }
+    } catch {}
+
+    const lbl = (d.label || "").toLowerCase();
+    let icon = "sun";
+    if (lbl.includes("thunder") || lbl.includes("heavy rain") || (d.pop_max !== undefined && d.pop_max >= 60)) {
+      icon = "rain";
+    } else if (lbl.includes("shower") || lbl.includes("rain") || lbl.includes("drizzle") || (d.pop_max !== undefined && d.pop_max >= 30)) {
+      icon = "showers";
+    } else if (lbl.includes("cloud") || lbl.includes("overcast")) {
+      icon = "cloudsun";
+    }
+
+    return {
+      day: idx === 0 ? "Today" : d.day,
+      date: formattedDate,
+      icon,
+      high: `${d.temp_max_c}°`,
+      low: `${d.temp_min_c}°`,
+      rain: `${d.pop_max}%`,
+      label: d.label || "Clear",
+    };
+  });
+  const visibleForecast = period === "3 days" ? weatherRows.slice(0, 3) : weatherRows;
+
+  const alert = wx?.alerts?.[0];
+  const formattedFetchedAt = wx?.fetched_at
+    ? new Date(wx.fetched_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" })
+    : "Recently";
+
+  const placeName = wx?.location?.name
+    ? `${wx.location.name.toUpperCase()}, ${wx.location.state?.toUpperCase() || "INDIA"}`
+    : `${location.district.toUpperCase()}, ${location.state.toUpperCase()}`;
+
+  return (
+    <div className="module-layout">
+      <div className="module-main">
+        {/* Location Picker Header */}
+        <div className="weather-location-bar" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "10px", marginBottom: "14px", padding: "10px 14px", background: "#f8faf7", border: "1px solid #e2e8df", borderRadius: "10px" }}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (searchInput.trim()) updateLocationFromInput(searchInput.trim());
+            }}
+            style={{ display: "flex", alignItems: "center", gap: "8px", flex: "1 1 260px" }}
+          >
+            <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
+              <Search size={15} style={{ position: "absolute", left: "10px", color: "#6b7280" }} />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search city or district (e.g. Khunti, Ranchi)..."
+                style={{ width: "100%", padding: "7px 10px 7px 32px", fontSize: "14px", border: "1px solid #c7d2c3", borderRadius: "8px", background: "#fff" }}
+                aria-label="Search location"
+              />
+            </div>
+            <button type="submit" className="primary-action" style={{ padding: "7px 14px", fontSize: "13px" }}>
+              Search
+            </button>
+          </form>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "12px", color: "#6b7280" }}>Quick switch:</span>
+            {["Khunti", "Ranchi", "Hazaribagh", "Ramgarh"].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => {
+                  setSearchInput(d);
+                  updateLocationFromInput(d);
+                }}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "14px",
+                  border: location.district.toLowerCase() === d.toLowerCase() ? "1px solid #2d6a4f" : "1px solid #d1d5db",
+                  background: location.district.toLowerCase() === d.toLowerCase() ? "#e8f5e9" : "#fff",
+                  color: location.district.toLowerCase() === d.toLowerCase() ? "#164b35" : "#374151",
+                  fontWeight: location.district.toLowerCase() === d.toLowerCase() ? 600 : 400,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Not found error banner with retention of previous forecast */}
+        {wxError && (
+          <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #f87171", borderRadius: "8px", color: "#991b1b", fontSize: "13px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <Info size={16} />
+            <span>Couldn't find that place. Try the district name</span>
+          </div>
+        )}
+
+        <div className="weather-summary-grid">
+          <div className="weather-now-card">
+            <div className="weather-place">
+              <MapPin size={14} /> {placeName} {wx.stale ? <span className="sample-chip">EARLIER DATA</span> : null}
+            </div>
+            <div className="weather-now-main">
+              <div>
+                <div className="weather-temp">{wx.current?.temp_c ?? "--"}<span>°</span></div>
+                <div className="weather-description">{wx.current?.description || "Conditions update"}</div>
+              </div>
+              <Sun size={59} strokeWidth={1.2} />
+            </div>
+            <div className="weather-feels">
+              Feels like {wx.current?.feels_like_c ?? "--"}°
+              {wx.daily_7day?.[0] ? ` · H: ${wx.daily_7day[0].temp_max_c}° L: ${wx.daily_7day[0].temp_min_c}°` : ""}
+            </div>
+            <div className="weather-bottom-stats">
+              <div><DropletsIcon /><span>HUMIDITY</span><strong>{wx.current?.humidity ?? "--"}%</strong></div>
+              <div><CloudRain size={16} /><span>RAIN CHANCE</span><strong>{wx.current?.rain_chance ?? "--"}%</strong></div>
+              <div><Wind size={16} /><span>WIND</span><strong>{wx.current?.wind_kmh ?? "--"} km/h</strong></div>
+            </div>
+          </div>
+          <div className="weather-soil-card">
+            <span className="card-kicker">ON YOUR FARM</span>
+            <div className="soil-water-icon"><DropletsIcon /></div>
+            <strong>{wx.soil?.soil_moisture_pct ?? wx.current?.soil_moisture_pct ?? 0}<small>%</small></strong>
+            <span>volumetric soil moisture</span>
+            <div className="moisture-track">
+              <i style={{ width: `${Math.min(100, Math.max(0, wx.soil?.soil_moisture_pct ?? wx.current?.soil_moisture_pct ?? 0))}%` }} />
+            </div>
+            <small className="moisture-note">
+              {wx.soil?.soil_temperature_c !== undefined && wx.soil?.soil_temperature_c !== null
+                ? `Soil temp: ${wx.soil.soil_temperature_c}°C`
+                : "Live soil reading"}
+            </small>
+            <span className="sample-chip">LIVE READING</span>
+          </div>
+        </div>
+
+        <Card className="forecast-card">
+          <div className="module-card-heading">
+            <div>
+              <span className="card-kicker">LOCAL OUTLOOK</span>
+              <h3>Coming up in {wx.location?.name || location.district}</h3>
+            </div>
+            <div className="segmented-control">
+              {["7 days", "3 days"].map((item) => (
+                <button
+                  key={item}
+                  className={period === item ? "selected" : ""}
+                  onClick={() => setPeriod(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="forecast-list">
+            {visibleForecast.map((row: any) => (
+              <div className="forecast-row" key={row.day}>
+                <div className="forecast-day">
+                  <strong>{row.day}</strong>
+                  <small>{row.date}</small>
+                </div>
+                <span className="forecast-emoji" aria-hidden="true">
+                  {row.icon === "rain" ? (
+                    <CloudRain size={18} />
+                  ) : row.icon === "showers" ? (
+                    <CloudDrizzle size={18} />
+                  ) : row.icon === "cloudsun" ? (
+                    <CloudSun size={18} />
+                  ) : (
+                    <Sun size={18} />
+                  )}
+                </span>
+                <span className="forecast-label">{row.label}</span>
+                <span className="forecast-rain"><DropletsIcon /> {row.rain}</span>
+                <div className="forecast-range">
+                  <strong>{row.high}</strong>
+                  <i />
+                  <span>{row.low}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="risk-card">
+          <div className="module-card-heading">
+            <div>
+              <span className="card-kicker">CROP-SPECIFIC ALERTS</span>
+              <h3>What the weather means for your field</h3>
+            </div>
+            <span className="risk-badge">
+              {wx.alerts && wx.alerts.length > 0
+                ? `${wx.alerts.length} ACTIVE`
+                : "ALL CLEAR"}
+            </span>
+          </div>
+          {wx.alerts && wx.alerts.length > 0 ? (
+            wx.alerts.map((alt: any, idx: number) => (
+              <div className="risk-item" key={idx}>
+                <span className="risk-weather-icon"><CloudRain size={19} /></span>
+                <div>
+                  <strong>{alt.title}</strong>
+                  <p>{alt.message}</p>
+                  <small style={{ color: "#5a6854" }}>
+                    Observed: {alt.observed_value}{alt.unit || "%"} (Threshold: {alt.threshold}{alt.unit || "%"})
+                    {alt.observed_accumulation_mm ? ` · Rain: ${alt.observed_accumulation_mm} mm` : ""}
+                    {alt.window_hours ? ` · Next ${alt.window_hours}h` : ""}
+                  </small>
+                </div>
+                <span className="risk-level">
+                  {alt.severity === "action_needed" ? "Action Needed" : "Watch"}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="recommendation-box">
+              <strong><Check size={15} /> No weather alerts right now</strong>
+              <p>Temperature, rainfall chance, and wind speed are within normal operating ranges for your crops.</p>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <aside className="module-aside">
+        <Card className="advisory-card">
+          <span className="card-kicker">FARMLY'S FIELD NOTE</span>
+          <span className="advisory-icon"><CloudRain size={21} /></span>
+          {alert ? (
+            <>
+              <h3>{alert.title}</h3>
+              <p>{alert.message}</p>
+              <div className="advisory-action">
+                <Check size={15} />
+                <span>Observed: {alert.observed_value}{alert.unit || "%"} (Threshold: {alert.threshold}{alert.unit || "%"})</span>
+              </div>
+              {alert.observed_accumulation_mm !== undefined && alert.observed_accumulation_mm !== null && (
+                <div className="advisory-action">
+                  <Check size={15} />
+                  <span>Accumulation: {alert.observed_accumulation_mm} mm in {alert.window_hours || 36}h window</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <h3>No weather alerts right now</h3>
+              <p>Conditions are favorable for normal farm operations.</p>
+            </>
+          )}
+          <small>
+            {wx.stale ? "Earlier cached data is being shown" : "Live alert calculated from current forecast"}
+          </small>
+        </Card>
+
+        <div className="sample-notice" style={{ background: wx.stale ? "#fff9e6" : undefined, borderColor: wx.stale ? "#f0c36d" : undefined }}>
+          <Info size={15} />
+          <span>
+            Source: {wx.source || "OpenWeather / Open-Meteo"} · Fetched at {formattedFetchedAt}.
+            {wx.stale ? " (Earlier cached data is being shown)" : ""}
+          </span>
+        </div>
+
+        <Card className="weather-event-card">
+          <span className="card-kicker">WEATHER TIMELINE</span>
+          {wx.forecast_5day && wx.forecast_5day.length > 0 ? (
+            wx.forecast_5day.slice(0, 3).map((slot: any, idx: number) => {
+              const localTime = slot.timestamp
+                ? new Date(slot.timestamp * 1000).toLocaleTimeString([], {
+                    weekday: "short",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : slot.time;
+              return (
+                <div className="weather-event" key={idx}>
+                  <i />
+                  <div>
+                    <strong>{localTime} · {slot.temp_c}°C</strong>
+                    <small>{slot.description} · Rain: {slot.pop}% ({slot.rain_mm} mm)</small>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="weather-event">
+              <i />
+              <div>
+                <strong>Timeline</strong>
+                <small>Upcoming forecast slots unavailable</small>
+              </div>
+            </div>
+          )}
+        </Card>
+      </aside>
+    </div>
+  );
 }
 function DropletsIcon() { return <span className="drop-icon">◌</span> }
 
 export function MandiScreen() {
-  const [crop, setCrop] = useState("Paddy")
-  const [quantity, setQuantity] = useState(20)
-  const [distance, setDistance] = useState(70)
-  const [district, setDistrict] = useState("All districts")
-  const [sort, setSort] = useState<"price" | "distance">("price")
-  const [search, setSearch] = useState("")
-  const cropPriceAdjustments: Record<string, number> = { Paddy: 0, Maize: -450, Wheat: -180, Mustard: 340 }
-  const marketPrices = useMemo(() => markets.map((market) => ({ ...market, price: market.price + (cropPriceAdjustments[crop] || 0) })), [crop])
-  const sortedMarkets = useMemo(() => marketPrices.filter((market) => market.distance <= distance && (district === "All districts" || market.district === district) && `${market.name} ${market.district}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => sort === "price" ? b.price - a.price : a.distance - b.distance), [distance, district, marketPrices, search, sort])
-  const best = sortedMarkets[0] || marketPrices[0]
-  const chartData = marketPrices.map((market) => ({ name: market.name.split(" ")[0], mandi: market.price, local: market.distance * 9 }))
-  return <div className="module-layout"><div className="module-main"><Card className="market-tools-card"><div className="market-tools-heading"><div><span className="card-kicker">MAKE THE NUMBERS WORK FOR YOU</span><h3>Compare your selling options</h3></div><span className="sample-chip">ILLUSTRATIVE PRICES</span></div><div className="market-filter-grid"><label><span>Crop</span><select value={crop} onChange={(event) => setCrop(event.target.value)}><option>Paddy</option><option>Maize</option><option>Wheat</option><option>Mustard</option></select><ChevronDown size={14} /></label><label><span>Harvest quantity</span><input type="number" min="1" max="500" value={quantity} onChange={(event) => setQuantity(Math.max(1, Number(event.target.value)))} /><small>quintals</small></label><label><span>District</span><select value={district} onChange={(event) => setDistrict(event.target.value)}><option>All districts</option><option>Ranchi</option><option>Khunti</option><option>Ramgarh</option></select><ChevronDown size={14} /></label><label><span>Max travel distance</span><select value={distance} onChange={(event) => setDistance(Number(event.target.value))}><option value={30}>Within 30 km</option><option value={50}>Within 50 km</option><option value={70}>Within 70 km</option></select><ChevronDown size={14} /></label></div></Card>
-      <Card className="market-table-card"><div className="module-card-heading"><div><span className="card-kicker">NEARBY MARKETS</span><h3>Where your {crop.toLowerCase()} could go</h3></div><div className="table-tools"><label className="search-field"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a mandi" /></label><button className="sort-button" onClick={() => setSort(sort === "price" ? "distance" : "price")}><ArrowDownWideNarrow size={14} /> {sort === "price" ? "Best price" : "Nearest"}</button></div></div><div className="mandi-table-scroll"><table className="mandi-table"><thead><tr><th scope="col">MARKET</th><th scope="col">PRICE / Q</th><th scope="col">TRAVEL</th><th scope="col">EST. NET / Q</th><th scope="col">EST. TOTAL</th></tr></thead><tbody>{sortedMarkets.map((market, index) => { const transport = market.distance * 9; const net = market.price - transport; return <tr key={market.name} className={index === 0 ? "best-market-row" : ""}><td className="market-cell" data-label="Market"><div className="table-market-name"><span className="market-marker">{market.name[0]}</span><div><strong>{market.name}</strong><small>{market.district} district {index === 0 && <i>BEST ESTIMATE</i>}</small></div></div></td><td className="table-price" data-label="Price / quintal">₹{market.price.toLocaleString("en-IN")}</td><td data-label="Travel">{market.distance} km</td><td className="table-net" data-label="Est. net / q">₹{net.toLocaleString("en-IN")} <small className="transport-sub">−₹{transport} travel</small></td><td className="table-total" data-label="Est. total">₹{(net * quantity).toLocaleString("en-IN")}</td></tr> })}</tbody></table></div><SampleNotice>Market prices and transport cost estimates are demo values. Confirm current prices and actual costs locally.</SampleNotice></Card>
-      <Card className="price-chart-card"><div className="module-card-heading"><div><span className="card-kicker">PRICE COMPARISON</span><h3>A quick look across markets</h3></div><span className="chart-legend"><i /> Price per quintal</span></div><div className="mandi-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 8, right: 10, bottom: 0, left: 6 }}><CartesianGrid stroke="#e9ede5" vertical={false} strokeDasharray="3 4" /><XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: "#7d877b", fontSize: 11 }} dy={7} /><YAxis domain={[Math.min(...marketPrices.map((market) => market.price)) - 100, Math.max(...marketPrices.map((market) => market.price)) + 100]} tickLine={false} axisLine={false} tick={{ fill: "#929b8f", fontSize: 10 }} tickFormatter={(value) => `₹${value}`} /><Tooltip formatter={(value) => [`₹${value}`, "Price / quintal"]} contentStyle={{ border: "1px solid #e7ebe3", borderRadius: 12, fontSize: 12 }} /><Bar dataKey="mandi" fill="#4d8b52" radius={[5, 5, 0, 0]} maxBarSize={38} /></BarChart></ResponsiveContainer></div></Card>
-    </div><aside className="module-aside mandi-aside"><Card className="recommendation-card"><span className="card-kicker">FARMLY’S SELLING RECOMMENDATION</span><div className="recommendation-medallion"><Store size={20} /></div><h3>{best.name} looks promising.</h3><p>At the sample price and estimated travel cost, it may offer the strongest net return from the markets shown.</p><div className="recommendation-stat"><span>Estimated net / quintal</span><strong>₹{(best.price - best.distance * 9).toLocaleString("en-IN")}</strong></div><div className="recommendation-stat"><span>Estimated total · {quantity} q</span><strong>₹{((best.price - best.distance * 9) * quantity).toLocaleString("en-IN")}</strong></div><SampleNotice>Estimate uses ₹9/km per quintal for demonstration only.</SampleNotice></Card><Card className="profit-card"><span className="card-kicker">YOUR PROFIT ESTIMATE</span><h3>Change the quantity to see your estimate.</h3><div className="quantity-control"><button onClick={() => setQuantity(Math.max(1, quantity - 1))} aria-label="Decrease quantity">−</button><strong>{quantity}<small> quintals</small></strong><button onClick={() => setQuantity(Math.min(500, quantity + 1))} aria-label="Increase quantity">+</button></div><p>Estimate based on {best.name} sample price, less illustrative transport costs.</p></Card></aside></div>
+  const { location } = useLocation();
+  const [crop, setCrop] = useState("Paddy");
+  const [quantity, setQuantity] = useState(20);
+  const [distance, setDistance] = useState(70);
+  const [district, setDistrict] = useState("All districts");
+  const [sort, setSort] = useState<"price" | "distance">("price");
+  const [search, setSearch] = useState("");
+
+  // Clear old transport rate from localStorage on load so existing browsers do not keep stale state
+  useEffect(() => {
+    try {
+      localStorage.removeItem("farmly-transport-rate");
+    } catch {}
+  }, []);
+
+  // Live mandi prices from backend
+  const { data, loading, error, refetch } = usePrices({
+    crop,
+    quantity,
+    district,
+    distance,
+  });
+
+  const appliedRate = data?.transport_rate_applied ?? 8;
+
+  // Price trend from live backend
+  const { data: trendData } = usePriceTrend(crop, location.state, district);
+
+  // Extract distinct districts available in live results plus profile district
+  const availableDistricts = useMemo(() => {
+    const set = new Set<string>();
+    if (location.district) set.add(location.district);
+    (data?.records || []).forEach((r) => {
+      if (r.district) set.add(r.district);
+    });
+    return Array.from(set).sort();
+  }, [data?.records, location.district]);
+
+  // Filter records by search keyword and sort by net price or distance
+  const filteredRecords = useMemo(() => {
+    if (!data?.records) return [];
+    return data.records
+      .filter((r) => {
+        const q = search.toLowerCase().trim();
+        if (!q) return true;
+        return (
+          r.market.toLowerCase().includes(q) ||
+          r.district.toLowerCase().includes(q) ||
+          r.variety.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        if (sort === "price") {
+          const netA = a.est_net_per_q ?? a.modal_price;
+          const netB = b.est_net_per_q ?? b.modal_price;
+          return netB - netA;
+        }
+        const distA = a.distance_km ?? 99999;
+        const distB = b.distance_km ?? 99999;
+        return distA - distB;
+      });
+  }, [data?.records, search, sort]);
+
+  const best = data?.recommendation;
+
+  const chartData = useMemo(() => {
+    if (!filteredRecords.length) return [];
+    return filteredRecords.slice(0, 7).map((m) => ({
+      name: m.market.replace(/\b(APMC|Mandi|Market|Yard)\b/gi, "").trim().slice(0, 10),
+      mandi: m.modal_price,
+      local: m.transport_cost_per_q || (m.distance_km ? Math.round(m.distance_km * appliedRate) : 0),
+    }));
+  }, [filteredRecords, appliedRate]);
+
+  const formattedFetchedAt = data?.fetched_at
+    ? new Date(data.fetched_at).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        day: "numeric",
+        month: "short",
+      })
+    : "Recently";
+
+  return (
+    <div className="module-layout">
+      <div className="module-main">
+        <Card className="market-tools-card">
+          <div className="market-tools-heading">
+            <div>
+              <span className="card-kicker">LIVE MANDI INTELLIGENCE</span>
+              <h3>Compare your selling options</h3>
+            </div>
+            <span
+              className="sample-chip"
+              style={{ background: "#e8f4ec", color: "#164b35", borderColor: "#a3cbb1" }}
+            >
+              LIVE AGMARKNET
+            </span>
+          </div>
+
+          <div className="market-filter-grid">
+            <label>
+              <span>Crop</span>
+              <select value={crop} onChange={(event) => setCrop(event.target.value)}>
+                {crops.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} />
+            </label>
+
+            <label>
+              <span>Harvest quantity</span>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={quantity}
+                onChange={(event) => setQuantity(Math.max(1, Number(event.target.value)))}
+              />
+              <small>quintals</small>
+            </label>
+
+            <label>
+              <span>District</span>
+              <select value={district} onChange={(event) => setDistrict(event.target.value)}>
+                <option value="All districts">All districts ({location.state || "Statewide"})</option>
+                {availableDistricts.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} />
+            </label>
+
+            <label>
+              <span>Max travel distance</span>
+              <select value={distance} onChange={(event) => setDistance(Number(event.target.value))}>
+                <option value={30}>Within 30 km</option>
+                <option value={50}>Within 50 km</option>
+                <option value={70}>Within 70 km</option>
+                <option value={100}>Within 100 km</option>
+                <option value={200}>Within 200 km</option>
+              </select>
+              <ChevronDown size={14} />
+            </label>
+          </div>
+        </Card>
+
+        <Card className="market-table-card">
+          <div className="module-card-heading">
+            <div>
+              <span className="card-kicker">NEARBY MARKETS</span>
+              <h3>Where your {crop.toLowerCase()} could go</h3>
+            </div>
+            <div className="table-tools">
+              <label className="search-field">
+                <Search size={15} />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Find a mandi or variety"
+                />
+              </label>
+              <button
+                className="sort-button"
+                onClick={() => setSort(sort === "price" ? "distance" : "price")}
+              >
+                <ArrowDownWideNarrow size={14} /> {sort === "price" ? "Best net return" : "Nearest"}
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ padding: "40px 16px", textAlign: "center" }}>
+              <LoaderCircle className="auth-spinner" size={26} style={{ margin: "0 auto 10px" }} />
+              <p style={{ fontWeight: 600, color: "#164b35" }}>Loading live mandi prices from Agmarknet…</p>
+              <small style={{ color: "#7a8577" }}>
+                Connecting to data.gov.in daily feed. First request can take up to a minute.
+              </small>
+            </div>
+          ) : error ? (
+            <div style={{ padding: "30px 16px", textAlign: "center" }}>
+              <p style={{ color: "#b91c1c", fontWeight: 600, marginBottom: "10px" }}>{error}</p>
+              <button
+                className="primary-action"
+                onClick={refetch}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", margin: "0 auto" }}
+              >
+                <RefreshCw size={14} /> Retry Live Feed
+              </button>
+            </div>
+          ) : filteredRecords.length === 0 ? (
+            <div style={{ padding: "36px 16px", textAlign: "center" }}>
+              <Store size={32} style={{ margin: "0 auto 10px", color: "#8a9485" }} />
+              <p style={{ fontWeight: 600, color: "#164b35", fontSize: "15px" }}>
+                No mandi reported {crop} in {district !== "All districts" ? district : (location.state || "this region")} today.
+              </p>
+              <p style={{ color: "#7a8577", fontSize: "13px", marginTop: "6px" }}>
+                Try selecting "All districts", widening your travel distance, or switching to another crop.
+              </p>
+            </div>
+          ) : (
+            <div className="mandi-table-scroll">
+              <table className="mandi-table">
+                <thead>
+                  <tr>
+                    <th scope="col">MARKET</th>
+                    <th scope="col">PRICE / Q</th>
+                    <th scope="col">TRAVEL</th>
+                    <th scope="col">EST. NET / Q</th>
+                    <th scope="col">EST. TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRecords.map((m, index) => {
+                    const isBest = best && best.market === m.market && best.district === m.district;
+                    return (
+                      <tr key={`${m.market}-${m.district}-${index}`} className={isBest ? "best-market-row" : ""}>
+                        <td className="market-cell" data-label="Market">
+                          <div className="table-market-name">
+                            <span className="market-marker">{m.market[0]}</span>
+                            <div>
+                              <strong>{m.market}</strong>
+                              <small>
+                                {m.district} district · {m.variety} {isBest && <i>BEST NET RETURN</i>}
+                              </small>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="table-price" data-label="Price / quintal">
+                          ₹{m.modal_price.toLocaleString("en-IN")}
+                          <small style={{ display: "block", fontSize: "10px", color: "#7a8577" }}>
+                            {m.arrival_date}
+                          </small>
+                        </td>
+                        <td data-label="Travel">
+                          {m.distance_km !== null ? (
+                            <>
+                              {m.distance_km} km
+                              {m.uncertain && (
+                                <small style={{ display: "block", fontSize: "10px", color: "#b45309" }}>
+                                  (approx)
+                                </small>
+                              )}
+                            </>
+                          ) : (
+                            <span style={{ color: "#8a9485", fontSize: "12px" }}>Distance unavailable</span>
+                          )}
+                        </td>
+                        <td className="table-net" data-label="Est. net / q">
+                          ₹{(m.est_net_per_q ?? m.modal_price).toLocaleString("en-IN")}{" "}
+                          {m.transport_cost_per_q !== null && (
+                            <small className="transport-sub">−₹{m.transport_cost_per_q} travel</small>
+                          )}
+                        </td>
+                        <td className="table-total" data-label="Est. total">
+                          ₹{(m.est_total ?? (m.modal_price * quantity)).toLocaleString("en-IN")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div
+            className="sample-notice"
+            style={{
+              background: data?.stale ? "#fff9e6" : undefined,
+              borderColor: data?.stale ? "#f0c36d" : undefined,
+              marginTop: "12px",
+            }}
+          >
+            <Info size={15} />
+            <span>
+              Source: {data?.source || "data.gov.in Agmarknet Daily Feed"} · Fetched at {formattedFetchedAt}.
+              {data?.stale ? " (Showing earlier live data)" : ""}
+            </span>
+          </div>
+        </Card>
+
+        <Card className="price-chart-card">
+          <div className="module-card-heading">
+            <div>
+              <span className="card-kicker">PRICE COMPARISON</span>
+              <h3>A quick look across markets</h3>
+            </div>
+            <span className="chart-legend">
+              <i /> Price per quintal (₹)
+            </span>
+          </div>
+          {chartData.length > 0 ? (
+            <div className="mandi-chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 8, right: 10, bottom: 0, left: 6 }}>
+                  <CartesianGrid stroke="#e9ede5" vertical={false} strokeDasharray="3 4" />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#7d877b", fontSize: 11 }}
+                    dy={7}
+                  />
+                  <YAxis
+                    domain={[
+                      Math.max(0, Math.min(...chartData.map((d) => d.mandi)) - 200),
+                      Math.max(...chartData.map((d) => d.mandi)) + 200,
+                    ]}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#929b8f", fontSize: 10 }}
+                    tickFormatter={(value) => `₹${value}`}
+                  />
+                  <Tooltip
+                    formatter={(value) => [`₹${value}`, "Price / quintal"]}
+                    contentStyle={{ border: "1px solid #e7ebe3", borderRadius: 12, fontSize: 12 }}
+                  />
+                  <Bar dataKey="mandi" fill="#4d8b52" radius={[5, 5, 0, 0]} maxBarSize={38} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div style={{ padding: "30px 16px", textAlign: "center", color: "#7a8577", fontSize: "13px" }}>
+              No price comparison chart available for current filters.
+            </div>
+          )}
+
+          {trendData && trendData.insufficient_data && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderTop: "1px solid #e9ede5",
+                fontSize: "12px",
+                color: "#5a6854",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <Info size={14} style={{ color: "#7a8577", flexShrink: 0 }} />
+              <span>
+                Price trend: Live mandi feed reports single-day arrival data for {crop}. Insufficient historical arrival dates to compute a trend line.
+              </span>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <aside className="module-aside mandi-aside">
+        <Card className="recommendation-card">
+          <span className="card-kicker">FARMLY’S SELLING RECOMMENDATION</span>
+          <div className="recommendation-medallion">
+            <Store size={20} />
+          </div>
+          {best ? (
+            <>
+              <h3>{best.market} looks promising.</h3>
+              <p>
+                Reported modal price of ₹{best.modal_price.toLocaleString("en-IN")}/q in {best.district}.{" "}
+                {best.transport_cost_per_q !== null
+                  ? `After estimated travel (₹${best.transport_cost_per_q}/q over ${best.distance_km} km at assumed ₹${appliedRate}/km/q), `
+                  : ""}
+                {best.basis.toLowerCase()}.
+              </p>
+              <div className="recommendation-stat">
+                <span>Estimated net / quintal</span>
+                <strong>
+                  ₹{(best.est_net_per_q ?? best.modal_price).toLocaleString("en-IN")}
+                </strong>
+              </div>
+              <div className="recommendation-stat">
+                <span>Estimated total · {quantity} q</span>
+                <strong>
+                  ₹{(best.est_total ?? (best.modal_price * quantity)).toLocaleString("en-IN")}
+                </strong>
+              </div>
+              <div className="sample-notice" style={{ marginTop: "12px" }}>
+                <Info size={14} />
+                <span>
+                  {data?.transport_notice || `Travel cost uses an assumed rate of ₹${appliedRate}/quintal/km (estimate, not an official figure).`}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3>No market qualifies within {distance} km</h3>
+              <p>
+                {data?.recommendation_notice ||
+                  `No market qualifies with a positive estimated net return for ${crop} within ${distance} km. Try increasing distance or trying another crop.`}
+              </p>
+            </>
+          )}
+        </Card>
+
+        <Card className="profit-card">
+          <span className="card-kicker">YOUR HARVEST ESTIMATE</span>
+          <h3>Change the quantity to see your estimate.</h3>
+          <div className="quantity-control">
+            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} aria-label="Decrease quantity">
+              −
+            </button>
+            <strong>
+              {quantity}
+              <small> quintals</small>
+            </strong>
+            <button onClick={() => setQuantity(Math.min(500, quantity + 1))} aria-label="Increase quantity">
+              +
+            </button>
+          </div>
+          <p>
+            {best
+              ? `Estimate based on ${best.market} modal price of ₹${best.modal_price}/q${best.transport_cost_per_q !== null ? ` less ₹${best.transport_cost_per_q} estimated travel per quintal.` : "."}`
+              : `Select a crop and location reporting live prices to calculate your net proceeds.`}
+          </p>
+        </Card>
+      </aside>
+    </div>
+  );
 }
 
 export function SoilScreen() {
@@ -209,6 +953,10 @@ export function SchemesScreen({ profile }: { profile: FarmerProfile }) {
 export function ProfileScreen({ profile, onSave }: { profile: FarmerProfile; onSave: (profile: FarmerProfile) => void }) {
   const [form, setForm] = useState(profile)
   const [savedPlan, setSavedPlan] = useState<{ crop: string; area: number; total: number } | null>(null)
+  const { setLocation } = useLocation()
+  useEffect(() => {
+    setForm(profile)
+  }, [profile])
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem("farmly-saved-crop-plan")
@@ -219,5 +967,14 @@ export function ProfileScreen({ profile, onSave }: { profile: FarmerProfile; onS
     } catch { /* Keep the profile usable if browser storage is unavailable. */ }
   }, [])
   const set = (key: keyof FarmerProfile, value: string) => setForm((current) => ({ ...current, [key]: value }))
-  return <div className="profile-layout"><div className="profile-main"><Card className="profile-card"><div className="profile-card-banner"><div className="profile-large-avatar">{form.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div><span className="card-kicker">YOUR FARM PROFILE</span><h3>{form.name}</h3><span><MapPin size={13} /> {form.village}, {form.district}</span></div><span className="profile-data-badge"><ShieldCheck size={14} /> Saved in this browser</span></div><div className="profile-form-grid"><label>Farmer name<input value={form.name} onChange={(event) => set("name", event.target.value)} /></label><label>Village<input value={form.village} onChange={(event) => set("village", event.target.value)} /></label><label>District<input value={form.district} onChange={(event) => set("district", event.target.value)} /></label><label>State<select value={form.state} onChange={(event) => set("state", event.target.value)}>{["Jharkhand", "Bihar", "Odisha", "West Bengal", "Madhya Pradesh", "Other"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Preferred language<select value={form.language} onChange={(event) => set("language", event.target.value)}>{["English", "हिंदी", "తెలుగు", "मराठी", "தமிழ்", "ਪੰਜਾਬੀ"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Farm size<input type="number" min="0.1" step="0.1" value={form.acres} onChange={(event) => set("acres", event.target.value)} /><small>acres</small></label><label>Main crop<input value={form.crop} onChange={(event) => set("crop", event.target.value)} /></label><label>Soil type<select value={form.soil} onChange={(event) => set("soil", event.target.value)}>{["Clay loam", "Sandy loam", "Black soil", "Red soil", "Alluvial", "Not sure"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Irrigation access<select value={form.irrigation} onChange={(event) => set("irrigation", event.target.value)}>{["Rain-fed", "Canal", "Well / borewell", "Drip irrigation", "Other"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Farming experience<input value={form.experience} onChange={(event) => set("experience", event.target.value)} /></label></div><div className="profile-card-footer"><span><Info size={14} /> This demo saves profile details only to this browser.</span><button className="primary-action" onClick={() => onSave(form)}>Save farm profile <Check size={15} /></button></div></Card><Card className="profile-language-card"><div className="language-roundel">अ</div><div><span className="card-kicker">MADE FOR YOUR LANGUAGE</span><h3>Farm advice should sound familiar.</h3><p>Choose a preferred language above. Voice recognition is subject to your browser and device support.</p></div></Card></div><aside className="profile-aside"><Card className="profile-summary-card"><span className="card-kicker">YOUR FARM AT A GLANCE</span><div className="profile-summary-stat"><Sprout size={17} /><div><span>Main crop</span><strong>{form.crop}</strong></div></div><div className="profile-summary-stat"><MapPin size={17} /><div><span>Location</span><strong>{form.district}, {form.state}</strong></div></div><div className="profile-summary-stat"><Leaf size={17} /><div><span>Land area</span><strong>{form.acres} acres</strong></div></div><div className="profile-summary-stat"><DropletsIcon /><div><span>Irrigation</span><strong>{form.irrigation}</strong></div></div>{savedPlan && <div className="saved-plan-summary"><span className="card-kicker">SAVED CROP PLAN</span><strong>{savedPlan.crop} · {savedPlan.area} acres</strong><small>Illustrative budget · ₹{Math.round(savedPlan.total).toLocaleString("en-IN")}</small></div>}</Card><SampleNotice>Your farm profile is sample information and can be edited. No account or cloud storage is connected.</SampleNotice></aside></div>
+  return <div className="profile-layout"><div className="profile-main"><Card className="profile-card"><div className="profile-card-banner"><div className="profile-large-avatar">{form.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div><span className="card-kicker">YOUR FARM PROFILE</span><h3>{form.name}</h3><span><MapPin size={13} /> {form.village}, {form.district}</span></div><span className="profile-data-badge"><ShieldCheck size={14} /> Saved in this browser</span></div><div className="profile-form-grid"><label>Farmer name<input value={form.name} onChange={(event) => set("name", event.target.value)} /></label><label>Village<input value={form.village} onChange={(event) => set("village", event.target.value)} /></label><LocationSelect state={form.state} district={form.district} onStateChange={(s) => set("state", s)} onDistrictChange={(d) => set("district", d)} variant="profile" /><label>Preferred language<select value={form.language} onChange={(event) => set("language", event.target.value)}>{["English", "हिंदी", "తెలుగు", "मराठी", "தமிழ்", "ਪੰਜਾਬੀ"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Farm size<input type="number" min="0.1" step="0.1" value={form.acres} onChange={(event) => set("acres", event.target.value)} /><small>acres</small></label><label>Main crop<input value={form.crop} onChange={(event) => set("crop", event.target.value)} /></label><label>Soil type<select value={form.soil} onChange={(event) => set("soil", event.target.value)}>{["Clay loam", "Sandy loam", "Black soil", "Red soil", "Alluvial", "Not sure"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Irrigation access<select value={form.irrigation} onChange={(event) => set("irrigation", event.target.value)}>{["Rain-fed", "Canal", "Well / borewell", "Drip irrigation", "Other"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Farming experience<input value={form.experience} onChange={(event) => set("experience", event.target.value)} /></label></div><div className="profile-card-footer"><span><Info size={14} /> This demo saves profile details only to this browser.</span><button className="primary-action" onClick={() => {
+              onSave(form)
+              if (form.district) {
+                setLocation({
+                  district: form.district,
+                  state: form.state,
+                  label: `${form.district}, ${form.state}`,
+                })
+              }
+            }}>Save farm profile <Check size={15} /></button></div></Card><Card className="profile-language-card"><div className="language-roundel">अ</div><div><span className="card-kicker">MADE FOR YOUR LANGUAGE</span><h3>Farm advice should sound familiar.</h3><p>Choose a preferred language above. Voice recognition is subject to your browser and device support.</p></div></Card></div><aside className="profile-aside"><Card className="profile-summary-card"><span className="card-kicker">YOUR FARM AT A GLANCE</span><div className="profile-summary-stat"><Sprout size={17} /><div><span>Main crop</span><strong>{form.crop}</strong></div></div><div className="profile-summary-stat"><MapPin size={17} /><div><span>Location</span><strong>{form.district}, {form.state}</strong></div></div><div className="profile-summary-stat"><Leaf size={17} /><div><span>Land area</span><strong>{form.acres} acres</strong></div></div><div className="profile-summary-stat"><DropletsIcon /><div><span>Irrigation</span><strong>{form.irrigation}</strong></div></div>{savedPlan && <div className="saved-plan-summary"><span className="card-kicker">SAVED CROP PLAN</span><strong>{savedPlan.crop} · {savedPlan.area} acres</strong><small>Illustrative budget · ₹{Math.round(savedPlan.total).toLocaleString("en-IN")}</small></div>}</Card><SampleNotice>Your farm profile is sample information and can be edited. No account or cloud storage is connected.</SampleNotice></aside></div>
 }

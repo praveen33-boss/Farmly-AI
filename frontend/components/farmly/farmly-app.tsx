@@ -6,6 +6,7 @@ import {
   House, Leaf, LogOut, MapPin, Menu, Mic2, Search, Settings2, Sprout, Store, Sun, UserRound, WalletCards, X,
 } from "lucide-react"
 import { clearDemoSession } from "@/lib/demo-auth"
+import { LocationProvider, useLocation } from "@/lib/location-context"
 import { DashboardScreen } from "./overview"
 import { CropPlannerScreen, MandiScreen, ProfileScreen, SchemesScreen, SoilScreen, VoiceScreen, WeatherScreen } from "./screens"
 
@@ -92,8 +93,9 @@ function Header({ active, profile, onLanguage, onMenu, onNavigate, onLogout }: {
 
 function Screen({ active, profile, onNavigate, onSaveProfile }: { active: Module; profile: FarmerProfile; onNavigate: (module: Module) => void; onSaveProfile: (profile: FarmerProfile) => void }) {
   const current = titles[active]
+  const { location } = useLocation()
   return <>
-    <div className="page-heading"><div><span className="eyebrow">{current.eyebrow}</span><h1>{active === "overview" ? `Namaste, ${profile.name.split(" ")[0]}` : current.title}</h1><p>{active === "overview" ? "Here’s what’s happening on your farm today." : current.description}</p></div><div className="heading-location"><MapPin size={15} /><span>{profile.village}, {profile.district}</span><span className="demo-chip">DEMO DATA</span></div></div>
+    <div className="page-heading"><div><span className="eyebrow">{current.eyebrow}</span><h1>{active === "overview" ? `Namaste, ${profile.name.split(" ")[0]}` : current.title}</h1><p>{active === "overview" ? "Here’s what’s happening on your farm today." : current.description}</p></div><div className="heading-location"><MapPin size={15} /><span suppressHydrationWarning>{location.label}</span></div></div>
     {active === "overview" && <DashboardScreen profile={profile} onNavigate={onNavigate} />}
     {active === "voice" && <VoiceScreen language={profile.language} />}
     {active === "weather" && <WeatherScreen />}
@@ -118,7 +120,14 @@ export function FarmlyApp() {
   }, [])
   const saveProfile = (next: FarmerProfile) => {
     setProfile(next)
-    try { window.localStorage.setItem("farmly-profile", JSON.stringify(next)) } catch { /* Profile remains available for this session. */ }
+    try {
+      window.localStorage.setItem("farmly-profile", JSON.stringify(next))
+      window.localStorage.setItem("farmly-selected-location", JSON.stringify({
+        district: next.district,
+        state: next.state,
+        label: `${next.district}, ${next.state}`,
+      }))
+    } catch { /* Profile remains available for this session. */ }
     setToast("Your farm profile has been saved")
     window.setTimeout(() => setToast(""), 2800)
   }
@@ -127,10 +136,14 @@ export function FarmlyApp() {
   const mobileItems: { id: Module; label: string; icon: typeof House }[] = [
     { id: "overview", label: "Home", icon: House }, { id: "weather", label: "Weather", icon: CloudRain }, { id: "voice", label: "Ask AI", icon: Mic2 }, { id: "planner", label: "Plan", icon: Sprout }, { id: "mandi", label: "Markets", icon: Store },
   ]
-  return <div className="farmly-app">
-    <Sidebar active={active} onChange={setActive} profile={profile} open={menuOpen} onClose={() => setMenuOpen(false)} />
-    <div className="app-main"><Header active={active} profile={profile} onLanguage={updateLanguage} onMenu={() => setMenuOpen(true)} onNavigate={setActive} onLogout={logout} /><main className="content-area"><Screen active={active} profile={profile} onNavigate={setActive} onSaveProfile={saveProfile} /><footer className="app-footer"><span>Farmly.AI · Your farm. Your language. Smarter decisions.</span><span>Sample information for demonstration only</span></footer></main></div>
-    <nav className="mobile-nav" aria-label="Mobile navigation">{mobileItems.map(({ id, label, icon: Icon }) => <button key={id} className={active === id ? "mobile-active" : ""} onClick={() => setActive(id)}><Icon size={19} strokeWidth={active === id ? 2.2 : 1.8} /><span>{label}</span>{id === "voice" && <i className="mobile-ai-dot" />}</button>)}</nav>
-    {toast && <div className="toast-message" role="status"><Activity size={16} />{toast}</div>}
-  </div>
+  return (
+    <LocationProvider profileDistrict={profile.district} profileState={profile.state}>
+      <div className="farmly-app">
+        <Sidebar active={active} onChange={setActive} profile={profile} open={menuOpen} onClose={() => setMenuOpen(false)} />
+        <div className="app-main"><Header active={active} profile={profile} onLanguage={updateLanguage} onMenu={() => setMenuOpen(true)} onNavigate={setActive} onLogout={logout} /><main className="content-area"><Screen active={active} profile={profile} onNavigate={setActive} onSaveProfile={saveProfile} /><footer className="app-footer"><span>Farmly.AI · Your farm. Your language. Smarter decisions.</span><span>Live agricultural intelligence for Indian farmers</span></footer></main></div>
+        <nav className="mobile-nav" aria-label="Mobile navigation">{mobileItems.map(({ id, label, icon: Icon }) => <button key={id} className={active === id ? "mobile-active" : ""} onClick={() => setActive(id)}><Icon size={19} strokeWidth={active === id ? 2.2 : 1.8} /><span>{label}</span>{id === "voice" && <i className="mobile-ai-dot" />}</button>)}</nav>
+        {toast && <div className="toast-message" role="status"><Activity size={16} />{toast}</div>}
+      </div>
+    </LocationProvider>
+  )
 }
