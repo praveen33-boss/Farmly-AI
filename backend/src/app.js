@@ -8,6 +8,7 @@ import { authRouter } from './routes/auth.js';
 import { profileRouter } from './routes/profile.js';
 import { statusRouter } from './routes/status.js';
 import { locationsRouter } from './routes/locations.js';
+import { schemesRouter } from './routes/schemes.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 export const app = express();
@@ -59,6 +60,10 @@ app.use('/api/status', statusRouter);
 
 // Locations routes (States & Districts)
 app.use('/api/locations', locationsRouter);
+
+// Schemes & Support routes (Government Schemes Discovery & Recommendations)
+app.use('/api/schemes', schemesRouter);
+app.use('/api/admin/schemes', schemesRouter);
 
 // 404 & Global Error handlers
 app.use(notFoundHandler);

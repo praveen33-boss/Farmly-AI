@@ -1,3 +1,17 @@
+
+/**
+ * Fallback advisory helper when tool calling encounters provider limits.
+ */
+function generateRuleBasedAdvisory(question, userContext) {
+  const lang = (userContext.language || 'English').toLowerCase();
+  if (lang.includes('te') || lang.includes('telugu') || lang.includes('తెలుగు')) {
+    return `${userContext.district} (${userContext.state}) లోని మీ ${userContext.crop} పంట కోసం వ్యవసాయ సలహా: లైవ్ సేవ ప్రస్తుతం డేటాను సమీకరిస్తోంది. తాజా వాతావరణం మరియు మండి పరిస్థితుల కోసం దయచేసి స్థానిక వ్యవసాయ అధికారి లేదా సమీపంలోని రైతు భరోసా కేంద్రాన్ని (RBK) సంప్రదించండి.`;
+  }
+  if (lang.includes('hi') || lang.includes('hindi') || lang.includes('हिंदी')) {
+    return `${userContext.district} (${userContext.state}) में आपकी ${userContext.crop} फसल के लिए कृषि सलाह: वर्तमान में लाइव डेटा सेवा व्यस्त है। अपनी फसल की स्थिति, मौसम और नजदीकी मंडी भाव की सटीक जानकारी के लिए स्थानीय कृषि अधिकारी या नजदीकी कृषि विज्ञान केंद्र (KVK) से संपर्क करें।`;
+  }
+  return `Agricultural advisory for ${userContext.crop} in ${userContext.district}, ${userContext.state}: Live service is compiling latest agronomic data. For field-specific fertilizer, spray, and market decisions, please consult your local Krishi Vigyan Kendra (KVK) or agriculture extension officer.`;
+}
 import { Groq } from 'groq-sdk';
 import { config } from '../config.js';
 import { getWeather, getLiveSoil } from './weather_service.js';
@@ -239,13 +253,7 @@ FARMER CONTEXT:
 - Farmer Crop: ${userContext.crop}
 - Farmer Location: ${userContext.city}, ${userContext.district}, ${userContext.state}
 
-AVAILABLE TOOLS (STRICT):
-You have access ONLY to these exact 4 tools:
-1. get_weather(city, lat, lon)
-2. get_prices(commodity, state, district, transport_rate_per_km)
-3. get_price_trend(commodity, state)
-4. get_soil_conditions(city, lat, lon)
-Do NOT call any other tool name (do NOT invent tools like 'commentary', 'search', 'query', etc.). If you want to explain, speak, or give commentary, output normal text directly.
+
 
 STRICT ANTI-HALLUCINATION RULES:
 1. Grounding: You MUST ONLY cite numbers (temperature, rain probability, modal prices, soil moisture) that were returned by your tool calls.
@@ -278,24 +286,33 @@ STRICT ANTI-HALLUCINATION RULES:
         max_tokens: 800,
       });
     } catch (groqErr) {
-      if (groqErr.message?.includes('tool') || groqErr.status === 400) {
-        console.warn(`[LLM Agent] Groq tool error caught (${groqErr.message}), recovering with text completion...`);
-        warnings.push(`LLM tool call recovery triggered: ${groqErr.message.slice(0, 100)}`);
+      console.warn(`[LLM Agent] Groq call error caught (${groqErr.message}), recovering with clean text completion...`);
+      warnings.push(`LLM tool call recovery triggered: ${groqErr.message ? String(groqErr.message).slice(0, 100) : 'Tool error'}`);
+
+      try {
+        const textOnlyMessages = [
+          {
+            role: 'system',
+            content: `You are Farmly AI, an expert agricultural advisor assisting Indian farmers.
+Farmer crop: ${userContext.crop}. Location: ${userContext.city}, ${userContext.district}, ${userContext.state}.
+Answer the farmer's question directly in ${userContext.language} with practical, actionable advice. Provide plain text only without any tool calls, code, or JSON.`,
+          },
+          {
+            role: 'user',
+            content: cleanQuestion,
+          },
+        ];
+
         response = await groq.chat.completions.create({
           model,
-          messages: [
-            ...messages,
-            {
-              role: 'system',
-              content:
-                'Do not call any functions. Provide your final advice directly in text in the requested language.',
-            },
-          ],
+          messages: textOnlyMessages,
           temperature: 0.2,
           max_tokens: 600,
         });
-      } else {
-        throw groqErr;
+      } catch (recoveryErr) {
+        console.warn(`[LLM Agent] Recovery completion failed (${recoveryErr.message}), falling back to direct advisory...`);
+        finalAnswer = generateRuleBasedAdvisory(cleanQuestion, userContext);
+        break;
       }
     }
 
@@ -356,20 +373,30 @@ STRICT ANTI-HALLUCINATION RULES:
 
   // Fallback if loop ended without content
   if (!finalAnswer) {
-    const fallbackResponse = await groq.chat.completions.create({
-      model,
-      messages: [
-        ...messages,
+    try {
+      const textOnlyMessages = [
+        {
+          role: 'system',
+          content: `You are Farmly AI, an expert agricultural advisor assisting Indian farmers.
+Farmer crop: ${userContext.crop}. Location: ${userContext.city}, ${userContext.district}, ${userContext.state}.
+Summarize your final practical advice in ${userContext.language} for the farmer based on the conversation so far. Reply directly in plain text without any tool calls or JSON.`,
+        },
         {
           role: 'user',
-          content:
-            'Please summarize your final agricultural advice for the farmer based on the tool results gathered so far.',
+          content: cleanQuestion,
         },
-      ],
-      temperature: 0.2,
-      max_tokens: 600,
-    });
-    finalAnswer = fallbackResponse.choices?.[0]?.message?.content || 'Data retrieved. Please verify with local agricultural office.';
+      ];
+      const fallbackResponse = await groq.chat.completions.create({
+        model,
+        messages: textOnlyMessages,
+        temperature: 0.2,
+        max_tokens: 600,
+      });
+      finalAnswer = fallbackResponse.choices?.[0]?.message?.content || generateRuleBasedAdvisory(cleanQuestion, userContext);
+    } catch (fallbackErr) {
+      console.warn(`[LLM Agent] Final fallback call failed (${fallbackErr.message})`);
+      finalAnswer = generateRuleBasedAdvisory(cleanQuestion, userContext);
+    }
   }
 
   return {

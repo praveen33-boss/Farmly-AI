@@ -47,3 +47,4 @@ export const mandiCache = new MemoryCache();
 export const geocodeCache = new MemoryCache();
 export const statusCache = new MemoryCache();
 export const locationCache = new MemoryCache();
+export const schemesCache = new MemoryCache();

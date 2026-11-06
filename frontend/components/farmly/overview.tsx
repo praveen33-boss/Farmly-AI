@@ -81,8 +81,8 @@ export function DashboardScreen({ profile, onNavigate }: { profile: FarmerProfil
   const feelsLike = wx?.current?.feels_like_c !== undefined ? `Feels like ${wx.current.feels_like_c}°` : "Live temperature"
   const rainChance = wx?.current?.rain_chance !== undefined ? `${wx.current.rain_chance}%` : "--"
   const rainFootnote = wx?.daily_7day?.[0]?.pop_max !== undefined ? `Today: ${wx.daily_7day[0].pop_max}% max` : "Live rain probability"
-  const soilMoisture = (wx?.soil?.soil_moisture_pct ?? wx?.current?.soil_moisture_pct) !== undefined ? `${wx.soil?.soil_moisture_pct ?? wx.current?.soil_moisture_pct}%` : "--"
-  const soilFootnote = wx?.soil?.soil_temperature_c !== undefined ? `Soil temp: ${wx.soil.soil_temperature_c}°C (volumetric)` : "Volumetric soil moisture"
+  const humidityVal = wx?.current?.humidity !== undefined ? `${wx.current.humidity}%` : "--"
+  const humidityFootnote = wx?.current?.humidity !== undefined ? "Relative air humidity" : "Live humidity reading"
 
   const placeLabel = wx?.location?.name
     ? `${wx.location.name}, ${wx.location.state || location.state}`
@@ -101,7 +101,7 @@ export function DashboardScreen({ profile, onNavigate }: { profile: FarmerProfil
           <div className="field-copy">
             <span className="field-caption"><span className="live-dot" /> YOUR FARM, THIS SEASON</span>
             <h2>Good things<br />are growing.</h2>
-            <p suppressHydrationWarning>Your {profile.crop.toLowerCase()} crop ({profile.acres} acres in {placeLabel}). Check live weather and soil readings before field operations.</p>
+            <p suppressHydrationWarning>Your {profile.crop.toLowerCase()} crop ({profile.acres} acres in {placeLabel}). Check live weather and field conditions before operations.</p>
             <button className="field-link" onClick={() => onNavigate("planner")}>View crop plan <ArrowRight size={15} /></button>
           </div>
           <div className="field-location" suppressHydrationWarning><MapPin size={13} /> {placeLabel}</div>
@@ -183,7 +183,7 @@ export function DashboardScreen({ profile, onNavigate }: { profile: FarmerProfil
       <section className="metric-grid" aria-label="Farm conditions">
         <MetricCard label="Temperature" value={currentTemp} unit="C" icon={Sun} tone="gold" footnote={feelsLike} />
         <MetricCard label="Rain probability" value={rainChance} icon={CloudRain} tone="blue" footnote={rainFootnote} />
-        <MetricCard label="Soil moisture" value={soilMoisture} icon={Droplets} tone="mint" footnote={soilFootnote} />
+        <MetricCard label="Humidity" value={humidityVal} icon={Droplets} tone="mint" footnote={humidityFootnote} />
         <MetricCard label="Farm size" value={profile.acres} unit="acres" icon={Leaf} tone="sage" footnote={`${profile.crop} · ${location.district}`} />
       </section>
 
@@ -220,7 +220,7 @@ export function DashboardScreen({ profile, onNavigate }: { profile: FarmerProfil
         <div className="quick-grid">
           <button className="quick-card" onClick={() => onNavigate("planner")}><span className="quick-icon quick-green"><Sprout size={19} /></span><span className="quick-card-copy"><strong>Plan a new crop</strong><small>Inputs, costs & a growing timeline</small></span><ArrowRight className="quick-arrow" size={16} /></button>
           <button className="quick-card" onClick={() => onNavigate("schemes")}><span className="quick-icon quick-yellow"><Leaf size={19} /></span><span className="quick-card-copy"><strong>Find farm support</strong><small>Explore schemes that may fit</small></span><ArrowRight className="quick-arrow" size={16} /></button>
-          <button className="quick-card" onClick={() => onNavigate("soil")}><span className="quick-icon quick-blue"><Droplets size={19} /></span><span className="quick-card-copy"><strong>Check soil health</strong><small>Understand your soil profile</small></span><ArrowRight className="quick-arrow" size={16} /></button>
+          <button className="quick-card" onClick={() => onNavigate("weather")}><span className="quick-icon quick-blue"><Droplets size={19} /></span><span className="quick-card-copy"><strong>Check weather forecast</strong><small>Live forecast for your district</small></span><ArrowRight className="quick-arrow" size={16} /></button>
           <button className="quick-card" onClick={() => onNavigate("mandi")}><span className="quick-icon quick-pink"><Store size={19} /></span><span className="quick-card-copy"><strong>Compare mandi prices</strong><small>Estimate your net returns</small></span><ArrowRight className="quick-arrow" size={16} /></button>
         </div>
       </section>

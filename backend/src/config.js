@@ -30,6 +30,7 @@ export const config = {
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || null,
   SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET || null,
   TRANSPORT_RATE_PER_Q_KM: Number.parseFloat(process.env.TRANSPORT_RATE_PER_Q_KM || '8'),
+  ADMIN_SYNC_KEY: process.env.ADMIN_SYNC_KEY || 'farmly-admin-sync-2026',
 };
 
 // Safe startup configuration check without exposing full keys

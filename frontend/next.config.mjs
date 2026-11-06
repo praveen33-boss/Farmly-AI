@@ -20,6 +20,14 @@ const nextConfig = {
       },
     ]
   },
+  async rewrites() {
+    return [
+      {
+        source: '/voice/:path*',
+        destination: 'http://127.0.0.1:8001/voice/:path*',
+      },
+    ]
+  },
 }
 
 export default nextConfig

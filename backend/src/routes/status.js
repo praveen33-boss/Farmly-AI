@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { config } from '../config.js';
 import { statusCache } from '../services/cache.js';
 import { isSupabaseConfigured, getSupabaseClient } from '../services/supabase_client.js';
+import { getSchemesMetadata } from '../services/schemes_service.js';
 
 export const statusRouter = Router();
 
@@ -101,10 +102,12 @@ async function checkGroq() {
   }
   const t0 = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const res = await fetch('https://api.groq.com/openai/v1/models', {
-      headers: { Authorization: `Bearer ${config.GROQ_API_KEY}` },
+      headers: {
+        Authorization: `Bearer ${config.GROQ_API_KEY}`,
+      },
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -140,9 +143,18 @@ async function checkSupabase() {
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('profiles').select('id').limit(1);
+    if (error && error.code !== 'PGRST116') {
+      return {
+        configured: true,
+        status: 'error',
+        message: error.message,
+        latency_ms: Date.now() - t0,
+        last_check: new Date().toISOString(),
+      };
+    }
     return {
       configured: true,
-      status: error ? `degraded (${error.message})` : 'operational',
+      status: 'operational',
       latency_ms: Date.now() - t0,
       last_check: new Date().toISOString(),
     };
@@ -164,12 +176,13 @@ statusRouter.get('/', async (req, res) => {
     return res.json(cached.data);
   }
 
-  const [weather, openMeteo, mandi, groq, supabase] = await Promise.all([
+  const [weather, openMeteo, mandi, groq, supabase, schemesMeta] = await Promise.all([
     checkOpenWeather(),
     checkOpenMeteo(),
     checkDataGovIn(),
     checkGroq(),
     checkSupabase(),
+    getSchemesMetadata().catch(() => ({ status: 'error', total_schemes: 0, verified_schemes: 0 })),
   ]);
 
   const allOperational =
@@ -188,6 +201,14 @@ statusRouter.get('/', async (req, res) => {
       data_gov_in_agmarknet: mandi,
       groq_ai: groq,
       supabase: supabase,
+      government_schemes: {
+        configured: true,
+        status: schemesMeta.status || 'operational',
+        total_schemes: schemesMeta.total_schemes || 0,
+        verified_schemes: schemesMeta.verified_schemes || 0,
+        last_synced_at: schemesMeta.last_synced_at || null,
+        last_check: new Date().toISOString(),
+      },
     },
   };
 

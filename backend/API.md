@@ -462,6 +462,133 @@ Updates farmer profile with RLS protection.
 
 ---
 
+
+---
+
+### 2.7 Government Schemes & Support Intelligence
+
+#### `GET /api/schemes`
+Retrieve available Central and State Government agricultural schemes with multi-parameter filtering and pagination.
+* **Auth**: None (Public)
+* **Query Parameters**:
+  * `state` (string, optional): e.g. `Jharkhand`, `Andhra Pradesh` (Central schemes are universally returned)
+  * `government_level` (string, optional): `Central` or `State`
+  * `category` (string, optional): `Income support`, `Crop insurance`, `Agricultural credit`, `Irrigation subsidy`, `Soil & inputs`, `Farm mechanization`, `State support`
+  * `crop` (string, optional): e.g. `Paddy`, `Wheat`, `Maize`
+  * `search` (string, optional): Text search across title, description, department, and benefits
+  * `page` (number, optional, default 1)
+  * `limit` (number, optional, default 50)
+* **Response (200 OK)**:
+```json
+{
+  "total": 13,
+  "page": 1,
+  "limit": 50,
+  "total_pages": 1,
+  "filters": {
+    "state": "Jharkhand",
+    "government_level": null,
+    "category": null,
+    "crop": "Paddy",
+    "search": null
+  },
+  "last_synced_at": "2026-11-01T00:00:00.000Z",
+  "schemes": [
+    {
+      "scheme_id": "pm-kisan",
+      "scheme_name": "PM-KISAN",
+      "full_name": "Pradhan Mantri Kisan Samman Nidhi",
+      "description": "A Central Sector scheme with 100% funding from Government of India...",
+      "short_description": "Direct income support of ₹6,000 per year in three four-monthly installments...",
+      "scheme_category": "Income support",
+      "government_level": "Central",
+      "state": "All India",
+      "ministry_or_department": "Ministry of Agriculture and Farmers Welfare, Government of India",
+      "benefits": {
+        "amount": "₹6,000 per year",
+        "frequency": "3 equal installments of ₹2,000 every 4 months",
+        "transfer_mode": "Direct Benefit Transfer (DBT) directly into Aadhaar-seeded bank account"
+      },
+      "eligibility_criteria": [ ... ],
+      "required_documents": [ ... ],
+      "application_process": [ ... ],
+      "official_application_url": "https://pmkisan.gov.in/RegistrationFormNew.aspx",
+      "official_information_url": "https://pmkisan.gov.in/",
+      "source_name": "PM-KISAN Official Portal & data.gov.in (Resource 388208c6-d82a-4190-90df-91aa2c326fec)",
+      "source_url": "https://pmkisan.gov.in/",
+      "last_verified_at": "2026-11-01T00:00:00.000Z",
+      "data_status": "verified"
+    }
+  ]
+}
+```
+
+#### `GET /api/schemes/:id`
+Retrieve full operational details for a specific scheme by `scheme_id` (e.g. `pm-kisan`, `pmfby`, `kcc`, `jharkhand-jrfry`, `ap-annadata-sukhibhava`).
+* **Auth**: None
+* **Response (200 OK)**: Full scheme object with eligibility, benefits, documents, and application steps.
+* **Response (404 Not Found)**: `{ "detail": "Scheme with ID 'xyz' was not found." }`
+
+#### `GET /api/schemes/recommended`
+Personalized scheme discovery engine matching farmer profile against official scheme criteria.
+* **Auth**: Optional (reads profile from Supabase if Bearer token present, or accepts query parameters)
+* **Query Parameters**:
+  * `state` (string)
+  * `district` (string)
+  * `crop` (string)
+  * `acres` (number)
+  * `land_status` (string: `Owner`, `Tenant farmer`)
+  * `irrigation` (string: `Rain-fed`, `Canal`, `Borewell`)
+* **Response (200 OK)**:
+```json
+{
+  "farmer_profile_applied": {
+    "state": "Jharkhand",
+    "district": "Khunti",
+    "crop": "Paddy",
+    "acres": 2.5,
+    "land_status": "Owner",
+    "irrigation": "Rain-fed",
+    "farmer_category": "Marginal farmer (up to 2.5 acres)"
+  },
+  "summary": {
+    "total_explored": 9,
+    "confirmed_count": 1,
+    "potential_count": 8,
+    "needs_info_count": 0,
+    "official_approvals_claimed": 0
+  },
+  "recommendations": [
+    {
+      "scheme_id": "pm-kisan",
+      "scheme_name": "PM-KISAN",
+      "fit": "Potentially relevant",
+      "fit_status": "potential",
+      "match_score": 100,
+      "applicable_location": "Khunti, Jharkhand",
+      "match_reasons": [
+        "Nationwide Central Government scheme applicable in all states and union territories.",
+        "Covers all major agricultural and horticultural crops including Paddy.",
+        "Registered land ownership status fulfills mandatory land title requirement."
+      ],
+      "missing_information": [
+        "Aadhaar e-KYC and land record seeding in state revenue portal must be completed to confirm eligibility."
+      ]
+    }
+  ]
+}
+```
+
+#### `GET /api/schemes/metadata`
+Real-time diagnostic endpoint reporting registered schemes count, verified proportions, tracked data.gov.in resources, and data freshness timestamps.
+* **Auth**: None
+
+#### `POST /api/admin/schemes/sync`
+Protected administrative synchronization trigger. Connects to data.gov.in and government feeds, updates cache, and records audit results.
+* **Auth**: Required Header: `x-admin-key: <ADMIN_SYNC_KEY>` (or `Authorization: Bearer <ADMIN_SYNC_KEY>`)
+* **Response (200 OK)**: `{ "success": true, "status": "success", "elapsed_ms": 1600, "results": { ... } }`
+* **Response (403 Forbidden)**: When valid administrative key is missing.
+
 ## 3. Frontend Changes Needed
 
 ### 3.1 Screens to Hide / Remove Mock Fixtures (Strict Hackathon Rules)

@@ -22,6 +22,11 @@ LANGUAGES = {
     "English": "en-IN"
 }
 
+SPEAKERS = {
+    "Telugu": "kavitha_te_conversation",
+    "Hindi": "ritu_hi_conversation",
+    "English": "simran_en_conversation",
+}
 
 class SpeechRequest(BaseModel):
     text: str
@@ -91,13 +96,14 @@ def text_to_speech(request: SpeechRequest):
 
     if request.language not in LANGUAGES:
         raise HTTPException(400, "Unsupported language")
+        
 
     try:
         chunks = client.text_to_speech.convert_stream(
             text=request.text,
             model="bulbul:v4-flash",
-            target_language_code=LANGUAGES[request.language],
-            speaker="kavitha" if request.language == "Telugu" else "shubh",
+            language_code=LANGUAGES[request.language],
+            speaker=SPEAKERS[request.language],
             output_audio_codec="mp3"
         )
 

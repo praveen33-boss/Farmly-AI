@@ -2,15 +2,15 @@
 
 import { useEffect, useState } from "react"
 import {
-  Activity, ArrowDownRight, ArrowRight, Bell, BookOpen, ChevronDown, CloudRain, Compass, FlaskConical,
+  Activity, ArrowRight, Bell, BookOpen, ChevronDown, CloudRain, Compass,
   House, Leaf, LogOut, MapPin, Menu, Mic2, Search, Settings2, Sprout, Store, Sun, UserRound, WalletCards, X,
 } from "lucide-react"
 import { clearDemoSession } from "@/lib/demo-auth"
 import { LocationProvider, useLocation } from "@/lib/location-context"
 import { DashboardScreen } from "./overview"
-import { CropPlannerScreen, MandiScreen, ProfileScreen, SchemesScreen, SoilScreen, VoiceScreen, WeatherScreen } from "./screens"
+import { CropPlannerScreen, MandiScreen, ProfileScreen, SchemesScreen, VoiceScreen, WeatherScreen } from "./screens"
 
-export type Module = "overview" | "voice" | "weather" | "mandi" | "soil" | "planner" | "schemes" | "profile"
+export type Module = "overview" | "voice" | "weather" | "mandi" | "planner" | "schemes" | "profile"
 export type FarmerProfile = {
   name: string
   village: string
@@ -36,16 +36,14 @@ const primaryNav: { id: Module; label: string; icon: typeof House }[] = [
   { id: "mandi", label: "Mandi prices", icon: Store },
 ]
 const farmNav: { id: Module; label: string; icon: typeof House }[] = [
-  { id: "soil", label: "Soil health", icon: FlaskConical },
   { id: "planner", label: "Crop planner", icon: Sprout },
   { id: "schemes", label: "Schemes & support", icon: WalletCards },
 ]
 const titles: Record<Module, { title: string; eyebrow: string; description: string }> = {
   overview: { title: "Your farm, at a glance", eyebrow: "FARM OVERVIEW", description: "A clearer view of what matters today." },
-  voice: { title: "Ask in your language", eyebrow: "FARMLY VOICE", description: "A friendly, voice-first demo for everyday farm questions." },
+  voice: { title: "Ask in your language", eyebrow: "FARMLY VOICE", description: "Live agricultural advisory in your language." },
   weather: { title: "Weather that works for your crop", eyebrow: "WEATHER INTELLIGENCE", description: "Plan around the forecast, not just the clouds." },
   mandi: { title: "Sell with a little more certainty", eyebrow: "MANDI INTELLIGENCE", description: "Compare nearby markets and estimated returns." },
-  soil: { title: "Get to know your soil", eyebrow: "SOIL HEALTH", description: "Understand your soil profile before making input decisions." },
   planner: { title: "Plan before you plant", eyebrow: "CROP PLANNER", description: "Build a practical season plan around your land." },
   schemes: { title: "Support for your farm journey", eyebrow: "SCHEMES & SUPPORT", description: "Explore government programmes and check what may fit." },
   profile: { title: "Your farm profile", eyebrow: "MY FARM", description: "Keep your farm details in one place." },
@@ -95,12 +93,11 @@ function Screen({ active, profile, onNavigate, onSaveProfile }: { active: Module
   const current = titles[active]
   const { location } = useLocation()
   return <>
-    <div className="page-heading"><div><span className="eyebrow">{current.eyebrow}</span><h1>{active === "overview" ? `Namaste, ${profile.name.split(" ")[0]}` : current.title}</h1><p>{active === "overview" ? "Here’s what’s happening on your farm today." : current.description}</p></div><div className="heading-location"><MapPin size={15} /><span suppressHydrationWarning>{location.label}</span></div></div>
+    <div className="page-heading"><div><span className="eyebrow">{current.eyebrow}</span><h1>{active === "overview" ? `Namaste, ${profile.name.split(" ")[0]}` : current.title}</h1><p>{active === "overview" ? "Here's what's happening on your farm today." : current.description}</p></div><div className="heading-location"><MapPin size={15} /><span suppressHydrationWarning>{location.label}</span></div></div>
     {active === "overview" && <DashboardScreen profile={profile} onNavigate={onNavigate} />}
-    {active === "voice" && <VoiceScreen language={profile.language} />}
+    {active === "voice" && <VoiceScreen profile={profile} onSaveProfile={onSaveProfile} />}
     {active === "weather" && <WeatherScreen />}
     {active === "mandi" && <MandiScreen />}
-    {active === "soil" && <SoilScreen />}
     {active === "planner" && <CropPlannerScreen profile={profile} />}
     {active === "schemes" && <SchemesScreen profile={profile} />}
     {active === "profile" && <ProfileScreen profile={profile} onSave={onSaveProfile} />}
@@ -120,14 +117,7 @@ export function FarmlyApp() {
   }, [])
   const saveProfile = (next: FarmerProfile) => {
     setProfile(next)
-    try {
-      window.localStorage.setItem("farmly-profile", JSON.stringify(next))
-      window.localStorage.setItem("farmly-selected-location", JSON.stringify({
-        district: next.district,
-        state: next.state,
-        label: `${next.district}, ${next.state}`,
-      }))
-    } catch { /* Profile remains available for this session. */ }
+    try { window.localStorage.setItem("farmly-profile", JSON.stringify(next)) } catch { /* Profile remains available for this session. */ }
     setToast("Your farm profile has been saved")
     window.setTimeout(() => setToast(""), 2800)
   }

@@ -1,61 +1,70 @@
+/**
+ * Farmly.AI Backend Comprehensive Smoke Test Suite
+ * Tests all live endpoints including Weather, Mandi, AI Advisor, Auth, Profile, and Schemes & Support.
+ */
 import { app } from '../src/app.js';
+import { config, printConfigStatus } from '../src/config.js';
+import http from 'node:http';
 
-const argUrl = process.argv[2];
-const envUrl = process.env.TEST_BASE_URL;
+const TEST_PORT = 8016;
+let server = null;
 
-async function runComprehensiveSmokeTest() {
+async function startTestServer() {
+  return new Promise((resolve) => {
+    server = http.createServer(app);
+    server.listen(TEST_PORT, '127.0.0.1', () => {
+      console.log(`[Smoke Test] Started local test instance at http://127.0.0.1:${TEST_PORT}\n`);
+      resolve();
+    });
+  });
+}
+
+async function runSmokeTests() {
   console.log('================================================================');
   console.log('       FARMLY.AI BACKEND COMPREHENSIVE LIVE SMOKE TEST           ');
   console.log('================================================================\n');
 
-  let server = null;
-  let baseUrl = argUrl || envUrl;
+  await startTestServer();
 
-  if (!baseUrl) {
-    const PORT = 8015;
-    server = app.listen(PORT, '127.0.0.1');
-    await new Promise((resolve) => server.once('listening', resolve));
-    baseUrl = `http://127.0.0.1:${PORT}`;
-    console.log(`[Smoke Test] Started local test instance at ${baseUrl}\n`);
-  } else {
-    console.log(`[Smoke Test] Targeting running server at ${baseUrl}\n`);
-  }
-
+  const baseUrl = `http://127.0.0.1:${TEST_PORT}`;
   const results = [];
 
   async function testEndpoint(name, path, options = {}) {
-    process.stdout.write(`• Testing ${name}... `);
     const t0 = Date.now();
     try {
+      process.stdout.write(`• Testing ${name}... `);
       const res = await fetch(`${baseUrl}${path}`, options);
       const latency = Date.now() - t0;
-      const json = await res.json().catch(() => null);
-      const isExpected = res.status < 500 || res.status === 503; // 503 is expected for unconfigured Supabase
-      console.log(`[${res.status}] (${latency}ms)`);
-      const sample = JSON.stringify(json);
-      const trimmed = sample && sample.length > 180 ? `${sample.slice(0, 180)}...` : sample;
-      console.log(`  Sample: ${trimmed}\n`);
-      results.push({ name, path, status: res.status, latency, ok: isExpected });
-      return { status: res.status, latency, json };
+      const json = await res.json().catch(() => ({}));
+
+      const ok = res.status >= 200 && res.status < 400 || (path.includes('auth') || path.includes('profile') ? res.status === 401 || res.status === 422 || res.status === 503 : false);
+      results.push({ name, status: res.status, latency, ok, detail: json });
+
+      if (ok) {
+        console.log(`[${res.status}] (${latency}ms)`);
+        console.log(`  Sample: ${JSON.stringify(json).slice(0, 180)}...\n`);
+      } else {
+        console.log(`[FAILED: ${res.status}] (${latency}ms)`);
+        console.log(`  Error: ${JSON.stringify(json)}\n`);
+      }
     } catch (err) {
       const latency = Date.now() - t0;
+      results.push({ name, status: 'ERROR', latency, ok: false, error: err.message });
       console.log(`[FAILED] (${latency}ms) - ${err.message}\n`);
-      results.push({ name, path, status: 'ERROR', latency, ok: false, error: err.message });
-      return null;
     }
   }
 
   try {
-    // 1. Health Check
+    // 1. Health check
     await testEndpoint('Health Check', '/');
 
-    // 2. Upstream Status
+    // 2. Upstream status
     await testEndpoint('Upstream Services Status', '/api/status');
 
     // 3. Weather
-    await testEndpoint('Weather (5-day slots + 7-day daily + alerts)', '/api/weather?city=Ranchi');
+    await testEndpoint('Weather (5-day slots + 7-day daily + alerts)', '/api/weather?city=Ranchi, Jharkhand');
 
-    // 4. Soil
+    // 4. Live Soil
     await testEndpoint('Live Soil (Moisture & Temperature)', '/api/weather/soil?city=Khunti');
 
     // 5. Mandi Prices
@@ -97,6 +106,27 @@ async function runComprehensiveSmokeTest() {
     // 10. Profile Protected Route
     await testEndpoint('Profile (401 Protected Route Check)', '/api/profile');
 
+    // 11. Schemes Discovery (State filtered)
+    await testEndpoint('Schemes Discovery (Jharkhand Filter)', '/api/schemes?state=Jharkhand');
+
+    // 12. Scheme Full Details
+    await testEndpoint('Scheme Full Details (PM-KISAN)', '/api/schemes/pm-kisan');
+
+    // 13. Schemes Recommendation Engine
+    await testEndpoint(
+      'Personalized Scheme Recommendations',
+      '/api/schemes/recommended?state=Jharkhand&district=Khunti&crop=Paddy&acres=2.5&irrigation=Rain-fed&land_status=Owner'
+    );
+
+    // 14. Schemes Metadata
+    await testEndpoint('Schemes Metadata & Source Freshness', '/api/schemes/metadata');
+
+    // 15. Admin Schemes Sync
+    await testEndpoint('Admin Schemes Sync (Protected)', '/api/admin/schemes/sync', {
+      method: 'POST',
+      headers: { 'x-admin-key': config.ADMIN_SYNC_KEY },
+    });
+
     console.log('================================================================');
     console.log('                     SMOKE TEST SUMMARY                         ');
     console.log('================================================================');
@@ -118,4 +148,8 @@ async function runComprehensiveSmokeTest() {
   }
 }
 
-runComprehensiveSmokeTest();
+runSmokeTests().catch((err) => {
+  console.error('[FATAL]', err);
+  if (server) server.close();
+  process.exit(1);
+});

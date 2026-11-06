@@ -2,11 +2,14 @@
 import { useLocation } from "@/lib/location-context";
 import { useWeather } from "@/lib/use-weather";
 import { usePrices, usePriceTrend, type MandiRecord } from "@/lib/use-prices";
+import { useSchemes, useRecommendedSchemes, useSchemesMetadata, type SchemeRecord } from "@/lib/use-schemes";
 import { LocationSelect } from "./location-select";
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowDownWideNarrow, ArrowRight, BadgeCheck, CalendarDays, Check, ChevronDown, CircleHelp, CloudDrizzle, CloudRain, CloudSun, Download, ExternalLink, FileText, Filter, Info, Leaf, LoaderCircle, MapPin, Mic, MicOff, Play, Plus, RefreshCw, Search, Send, ShieldCheck, Sprout, Store, Sun, Volume2, VolumeX, Wind, X } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import type { FarmerProfile } from "./farmly-app"
+import { apiPost, voicePostMultipart, voicePostJsonBlob, ApiError } from "@/lib/api"
+import { mapLanguageToVoice, prepareTextForSpeech, convertBlobTo16kHzWav, detectLanguageFromText, hasBrowserVoiceFor, type SupportedVoiceLanguage } from "@/lib/voice-utils"
 
 const schemeData = [
   { id: "pm-kisan", name: "PM-KISAN", full: "Pradhan Mantri Kisan Samman Nidhi", category: "Income support", type: "Central government", about: "Income support programme for eligible landholding farmer families, subject to scheme guidelines and exclusions.", benefit: "₹6,000 per year", fit: "More information needed", fitReason: "Land records and scheme exclusions need to be checked with the official portal.", url: "https://pmkisan.gov.in/", color: "scheme-green", mark: "₹" },
@@ -22,79 +25,1018 @@ const timeline = ["Prepare land", "Choose seed", "Sow", "Establishment", "Vegeta
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) { return <section className={`surface-card ${className}`}>{children}</section> }
 function SectionHeader({ eyebrow, title, detail }: { eyebrow: string; title: string; detail?: string }) { return <div className="module-section-heading"><span className="card-kicker">{eyebrow}</span><h2>{title}</h2>{detail && <p>{detail}</p>}</div> }
 function SampleNotice({ children = "Illustrative demo information · verify with official or local sources before acting." }: { children?: React.ReactNode }) { return <div className="sample-notice"><Info size={15} /><span>{children}</span></div> }
-function MetricBar({ label, value, percent, tone }: { label: string; value: string; percent: number; tone: string }) { return <div className="soil-bar-row"><div><span>{label}</span><strong>{value}</strong></div><div className="soil-bar-track"><i className={tone} style={{ width: `${percent}%` }} /></div></div> }
 
-const voiceResponses = {
-  English: {
-    crop: { original: "Your paddy is in the flowering stage. Check your soil test results and consult your local agriculture officer before deciding on fertilizer.", translation: "Illustrative response · follow locally verified agricultural guidance." },
-    rain: { original: "The demo forecast shows a 75% chance of rain in the next 36 hours. Clear field drains and postpone fertilizer until conditions improve.", translation: "Sample weather guidance only. Check IMD or your local forecast before making decisions." },
-    market: { original: "In this demo, Ramgarh shows ₹2,420 per quintal and Ranchi ₹2,350. Include travel and handling costs before choosing where to sell.", translation: "Prices are illustrative and are not current mandi quotes." },
-    schemes: { original: "PM-KISAN, PMFBY, and Kisan Credit Card may be worth exploring. Final eligibility depends on official rules, current notifications, and your records.", translation: "Check each official portal or contact your district agriculture office." },
-  },
-  Hindi: {
-    crop: { original: "आपकी धान की फसल में फूल आ रहे हैं। खाद का निर्णय लेने से पहले मिट्टी की जांच देखें और स्थानीय कृषि अधिकारी से सलाह लें।", translation: "उदाहरण के लिए उत्तर। स्थानीय कृषि सलाह का पालन करें।" },
-    rain: { original: "डेमो पूर्वानुमान में अगले 36 घंटों में बारिश की 75% संभावना है। खेत की नालियां साफ रखें और मौसम सुधरने तक खाद न डालें।", translation: "यह केवल नमूना जानकारी है। निर्णय से पहले IMD या स्थानीय पूर्वानुमान देखें।" },
-    market: { original: "इस डेमो में रामगढ़ का भाव ₹2,420 और रांची का ₹2,350 प्रति क्विंटल है। बिक्री से पहले यात्रा और अन्य खर्च जोड़ें।", translation: "ये कीमतें केवल उदाहरण हैं, आज के मंडी भाव नहीं।" },
-    schemes: { original: "PM-KISAN, PMFBY और किसान क्रेडिट कार्ड के बारे में जानकारी लें। अंतिम पात्रता सरकारी नियमों और आपके दस्तावेज़ों पर निर्भर है।", translation: "आधिकारिक पोर्टल या जिला कृषि कार्यालय से पुष्टि करें।" },
-  },
-  Telugu: {
-    crop: { original: "మీ వరి పంట పుష్పించే దశలో ఉంది. నేల పరీక్ష ఫలితాలను చూసి, స్థానిక వ్యవసాయ అధికారిని సంప్రదించి ఎరువుల నిర్ణయం తీసుకోండి.", translation: "Your paddy is flowering. Check your soil test and consult your local agriculture officer before deciding on fertilizer." },
-    rain: { original: "డెమో వాతావరణ సూచన ప్రకారం వచ్చే 36 గంటల్లో వర్షానికి 75% అవకాశం ఉంది. పొలంలోని నీటి కాలువలను శుభ్రం చేసి, వర్షం తర్వాత ఎరువుల గురించి నిర్ణయించండి.", translation: "Demo forecast only. Check IMD or your local weather service before making a decision." },
-    market: { original: "ఈ డెమోలో రామ్‌గఢ్ ధర క్వింటాల్‌కు ₹2,420, రాంచీ ధర ₹2,350. అమ్మే ముందు ప్రయాణ ఖర్చులను కూడా లెక్కించండి.", translation: "These are illustrative values, not current mandi prices." },
-    schemes: { original: "PM-KISAN, PMFBY, కిసాన్ క్రెడిట్ కార్డ్ పథకాల గురించి తెలుసుకోండి. తుది అర్హత ప్రభుత్వ నిబంధనలు, తాజా ప్రకటనలు, మీ పత్రాలపై ఆధారపడి ఉంటుంది.", translation: "Check the official portal or ask your district agriculture office." },
-  },
-} as const
+// ── VoiceScreen types ───────────────────────────────────────────────────────
+interface AdviceResponse {
+  answer: string
+  tools_used?: string[]
+  sources?: { name: string; fetched_at?: string }[]
+  warnings?: string[]
+}
 
-type VoiceLanguage = keyof typeof voiceResponses
+interface TranscribeResponse {
+  transcript: string
+}
 
-export function VoiceScreen({ language }: { language: string }) {
-  const [listening, setListening] = useState(false)
-  const [query, setQuery] = useState("")
-  const [answer, setAnswer] = useState("")
-  const [answerTranslation, setAnswerTranslation] = useState("")
-  const [recognized, setRecognized] = useState("")
-  const [speaking, setSpeaking] = useState(false)
-  const recognitionRef = useRef<{ start: () => void; stop: () => void } | null>(null)
-  const languageKey: VoiceLanguage = language === "తెలుగు" ? "Telugu" : language === "हिंदी" ? "Hindi" : "English"
-  const handleAsk = (text = query) => {
-    if (!text.trim()) return
-    setRecognized(text)
-    const normalized = text.toLowerCase()
-    const category = /rain|weather|వర్ష|बारिश/.test(normalized) ? "rain" : /mandi|market|price|sell|ధర|మండి|बाज़ार|मंडी|भाव/.test(normalized) ? "market" : /scheme|subsid|support|కిసాన్|పథక|योजना|सब्सिडी/.test(normalized) ? "schemes" : "crop"
-    const response = voiceResponses[languageKey][category]
-    setAnswer(response.original)
-    setAnswerTranslation(response.translation)
-    setQuery("")
+type VoicePhase =
+  | "idle"
+  | "recording"
+  | "transcribing"
+  | "advising"
+  | "speaking"
+
+// ── VoiceScreen ──────────────────────────────────────────────────────────────
+export function VoiceScreen({
+  profile,
+  onSaveProfile,
+  onLanguage,
+}: {
+  profile: FarmerProfile;
+  onSaveProfile?: (profile: FarmerProfile) => void;
+  onLanguage?: (lang: string) => void;
+}) {
+  // ── Selected Language state (dropdown at top of Voice Assistant) ──
+  const [selectedLanguage, setSelectedLanguage] = useState<SupportedVoiceLanguage>(() => {
+    return mapLanguageToVoice(profile.language) || "English";
+  });
+
+  const selectedLanguageRef = useRef<SupportedVoiceLanguage>(selectedLanguage);
+  useEffect(() => {
+    selectedLanguageRef.current = selectedLanguage;
+  }, [selectedLanguage]);
+
+  // Sync selectedLanguage when profile.language changes (e.g. from topbar header)
+  useEffect(() => {
+    const mapped = mapLanguageToVoice(profile.language);
+    if (mapped && mapped !== selectedLanguageRef.current) {
+      setSelectedLanguage(mapped);
+      selectedLanguageRef.current = mapped;
+      stopAudio();
+    }
+  }, [profile.language]);
+
+  const handleLanguageChange = (nextLang: SupportedVoiceLanguage) => {
+    setSelectedLanguage(nextLang);
+    selectedLanguageRef.current = nextLang;
+    stopAudio();
+    try {
+      const saved = window.localStorage.getItem("farmly-profile");
+      const current = saved ? JSON.parse(saved) : {};
+      const updated = { ...current, ...profile, language: nextLang };
+      window.localStorage.setItem("farmly-profile", JSON.stringify(updated));
+      if (onLanguage) onLanguage(nextLang);
+      else if (onSaveProfile) onSaveProfile(updated);
+    } catch {}
+    console.log("[Voice Assistant] Language switched to:", nextLang);
+  };
+
+  // ── Conversation & Interaction State ──
+  interface ChatMessage {
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: string;
+    language: SupportedVoiceLanguage;
+    toolsUsed?: string[];
+    sources?: { name: string; fetched_at?: string }[];
+    warnings?: string[];
   }
-  const toggleListening = () => {
-    if (listening) { recognitionRef.current?.stop(); setListening(false); return }
-    const SpeechRecognitionConstructor = (window as Window & { SpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void }; webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void } }).SpeechRecognition || (window as Window & { webkitSpeechRecognition?: new () => { lang: string; interimResults: boolean; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void } }).webkitSpeechRecognition
-    if (!SpeechRecognitionConstructor) { setAnswer("Voice recognition is not supported in this browser. You can type your question below."); return }
-    const recognition = new SpeechRecognitionConstructor()
-    recognition.lang = languageKey === "Telugu" ? "te-IN" : languageKey === "Hindi" ? "hi-IN" : "en-IN"
-    recognition.interimResults = false
-    recognition.onresult = (event) => handleAsk(event.results[0][0].transcript)
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => setListening(false)
-    recognitionRef.current = recognition
-    recognition.start()
-    setListening(true)
-  }
-  const speak = () => {
-    if (!answer || !("speechSynthesis" in window)) return
-    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return }
-    const utterance = new SpeechSynthesisUtterance(answer)
-    utterance.lang = languageKey === "Telugu" ? "te-IN" : languageKey === "Hindi" ? "hi-IN" : "en-IN"
-    utterance.onend = () => setSpeaking(false)
-    window.speechSynthesis.speak(utterance)
-    setSpeaking(true)
-  }
-  return <div className="module-layout voice-layout">
-    <div className="voice-primary"><Card className="voice-stage-card"><div className="voice-stage-top"><span className="status-pill"><span className="status-dot" /> DEMO ASSISTANT</span><span className="voice-language-pill">Speaking in <strong>{language}</strong></span></div><div className={`voice-orbit ${listening ? "is-listening" : ""}`}><div className="orbit-ring orbit-one" /><div className="orbit-ring orbit-two" /><div className="orbit-ring orbit-three" /><button className={`big-mic ${listening ? "mic-listening" : ""}`} onClick={toggleListening} aria-label={listening ? "Stop listening" : "Start voice input"}>{listening ? <MicOff size={29} /> : <Mic size={29} />}</button><div className="voice-wave"><i /><i /><i /><i /><i /><i /><i /></div></div><p className="voice-state">{listening ? "I’m listening… go ahead" : "Tap the mic and tell me what’s on your mind"}</p><p className="voice-subtext">Try asking in English, हिंदी, or తెలుగు</p><div className="voice-compose"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing && event.keyCode !== 229) handleAsk() }} placeholder="Or type your question here…" aria-label="Type your farming question" /><button onClick={() => handleAsk()} aria-label="Send question"><Send size={17} /></button></div></Card>
-      {answer && <Card className="voice-answer"><div className="answer-heading"><div className="ai-avatar"><Leaf size={17} /></div><div><strong>Farmly AI <span>DEMO RESPONSE</span></strong><small>Based on your paddy crop profile</small></div><button className="icon-button" onClick={speak} aria-label={speaking ? "Stop audio" : "Play response aloud"}>{speaking ? <VolumeX size={17} /> : <Volume2 size={17} />}</button></div><div className="question-echo"><span>YOU ASKED</span><p>{recognized}</p></div><p className="answer-original">{answer}</p><div className="answer-translation"><span>ENGLISH TRANSLATION</span><p>{answerTranslation}</p></div><div className="answer-caution"><Info size={14} /> Illustrative response only. Confirm crop decisions with a local agriculture expert.</div></Card>}
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [query, setQuery] = useState("");
+  const [phase, setPhase] = useState<
+    "idle" | "recording" | "transcribing" | "advising" | "generating_audio" | "playing_audio"
+  >("idle");
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const feedEndRef = useRef<HTMLDivElement | null>(null);
+  const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioCacheRef = useRef<Map<string, { blob: Blob; url: string }>>(new Map());
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
+  const isProcessingStopRef = useRef<boolean>(false);
+
+  // Auto-scroll conversation feed
+  useEffect(() => {
+    feedEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, phase]);
+
+  // Clean up dynamic playback Object URL
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
+  // Clean up all cached audio URLs and active controllers on unmount
+  useEffect(() => {
+    const cache = audioCacheRef.current;
+    return () => {
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+      activeAbortControllerRef.current?.abort();
+      cache.forEach((item) => {
+        try {
+          URL.revokeObjectURL(item.url);
+        } catch {}
+      });
+      cache.clear();
+    };
+  }, []);
+
+  // ── Cooldown Timer Helper ──
+  const startCooldown = useCallback((seconds: number) => {
+    if (cooldownTimerRef.current) {
+      clearInterval(cooldownTimerRef.current);
+      cooldownTimerRef.current = null;
+    }
+    const duration = Math.max(1, Math.min(seconds || 15, 60));
+    setCooldownRemaining(duration);
+    cooldownTimerRef.current = setInterval(() => {
+      setCooldownRemaining((prev) => {
+        if (prev <= 1) {
+          if (cooldownTimerRef.current) {
+            clearInterval(cooldownTimerRef.current);
+            cooldownTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  // ── Granular Error Classifier ──
+  const classifyVoiceError = (
+    err: unknown,
+    context: "stt" | "advice" | "tts"
+  ): {
+    message: string;
+    isRateLimit: boolean;
+    isQuotaExceeded: boolean;
+    retryAfterSeconds: number;
+  } => {
+    const isApiErr = err instanceof ApiError;
+    const isRateLimit = isApiErr
+      ? err.isRateLimit
+      : /429|rate[- ]?limit|too many requests/i.test(String(err));
+    const isQuota = isApiErr
+      ? err.isQuotaExceeded
+      : /quota|insufficient balance|credits exhausted|billing/i.test(String(err));
+    const isTimeout = isApiErr
+      ? err.isTimeout
+      : /timeout|timed out|abort/i.test(String(err));
+    const isNetwork = isApiErr
+      ? err.isNetworkError
+      : /failed to fetch|network|unavailable|econnrefused/i.test(String(err));
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const retryAfter = isApiErr && err.retryAfterSeconds && err.retryAfterSeconds > 0
+      ? err.retryAfterSeconds
+      : 15;
+
+    if (isRateLimit) {
+      return {
+        message:
+          context === "tts"
+            ? `The voice audio service is temporarily busy. Please try again in ${retryAfter}s. Your text answer is still available.`
+            : `The voice service is temporarily busy. Please try again in ${retryAfter}s.`,
+        isRateLimit: true,
+        isQuotaExceeded: false,
+        retryAfterSeconds: retryAfter,
+      };
+    }
+
+    if (isQuota) {
+      return {
+        message:
+          context === "tts"
+            ? "Voice audio service request quota has been reached. Your text answer is still available."
+            : "Voice service request quota has been reached. Please try again later.",
+        isRateLimit: false,
+        isQuotaExceeded: true,
+        retryAfterSeconds: 0,
+      };
+    }
+
+    if (isTimeout) {
+      return {
+        message:
+          context === "tts"
+            ? "Audio generation timed out. Your text answer is still available."
+            : "The request timed out. Please try again.",
+        isRateLimit: false,
+        isQuotaExceeded: false,
+        retryAfterSeconds: 0,
+      };
+    }
+
+    if (isNetwork) {
+      return {
+        message: "Voice service is unavailable. Please check your internet connection and try again.",
+        isRateLimit: false,
+        isQuotaExceeded: false,
+        retryAfterSeconds: 0,
+      };
+    }
+
+    if (context === "stt") {
+      const lower = rawMsg.toLowerCase();
+      if (lower.includes("audio format") || lower.includes("unsupported")) {
+        return { message: "Audio format is not supported. Please record again.", isRateLimit: false, isQuotaExceeded: false, retryAfterSeconds: 0 };
+      }
+      if (lower.includes("no speech") || lower.includes("empty")) {
+        return { message: "No speech detected. Please speak clearly into your microphone.", isRateLimit: false, isQuotaExceeded: false, retryAfterSeconds: 0 };
+      }
+      if (lower.includes("no audio")) {
+        return { message: "No audio detected. Please record again.", isRateLimit: false, isQuotaExceeded: false, retryAfterSeconds: 0 };
+      }
+      return { message: "Could not convert your speech into text. Please try again.", isRateLimit: false, isQuotaExceeded: false, retryAfterSeconds: 0 };
+    }
+
+    if (context === "advice") {
+      const lower = rawMsg.toLowerCase();
+      if (lower.includes("tool") || lower.includes("tool_choice") || lower.includes("failed_generation")) {
+        return {
+          message: "The advisory service encountered a temporary processing issue. Please try asking again.",
+          isRateLimit: false,
+          isQuotaExceeded: false,
+          retryAfterSeconds: 0,
+        };
+      }
+      return { message: "Unable to retrieve your advisory response. Please try again.", isRateLimit: false, isQuotaExceeded: false, retryAfterSeconds: 0 };
+    }
+
+    // TTS
+    return { message: "Audio generation failed. Your text answer is still available.", isRateLimit: false, isQuotaExceeded: false, retryAfterSeconds: 0 };
+  };
+
+  // ── Stop Audio Helper ──
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeakingMsgId(null);
+    setPhase((p) => (p === "playing_audio" || p === "generating_audio" ? "idle" : p));
+  };
+
+  // ── TTS: Read text aloud in exact language with in-memory caching ──
+  const speakMessage = async (msgId: string, rawText: string, requestedLang: SupportedVoiceLanguage) => {
+    if (speakingMsgId === msgId && (phase === "playing_audio" || phase === "generating_audio")) {
+      stopAudio();
+      return;
+    }
+
+    stopAudio();
+    setSpeakingMsgId(msgId);
+    setError(null);
+
+    // Detect true script language to prevent language mismatch
+    const scriptLang = detectLanguageFromText(rawText);
+    const targetLang: SupportedVoiceLanguage = scriptLang || requestedLang;
+
+    // 1. Check in-memory audio cache first (eliminates redundant calls for re-listens)
+    const cacheKey = `${msgId}:${targetLang}`;
+    const cachedAudio = audioCacheRef.current.get(cacheKey);
+    if (cachedAudio) {
+      console.log("[Voice Assistant TTS Cache Hit] Playing cached audio for:", cacheKey);
+      try {
+        const audio = new Audio(cachedAudio.url);
+        audioRef.current = audio;
+        setPhase("playing_audio");
+
+        audio.onended = () => {
+          setPhase("idle");
+          setSpeakingMsgId(null);
+          audioRef.current = null;
+        };
+        audio.onerror = () => {
+          setPhase("idle");
+          setSpeakingMsgId(null);
+          audioRef.current = null;
+        };
+        await audio.play();
+        return;
+      } catch (playErr) {
+        console.warn("[Voice Assistant TTS Cache Playback error, fetching fresh]", playErr);
+      }
+    }
+
+    // Prepare speech text: clean markdown, strip tables, truncate ~400 chars at sentence end
+    const cleanSpeech = prepareTextForSpeech(rawText, 400);
+
+    console.log("[Voice Assistant TTS Request]", {
+      msgId,
+      selectedLanguage,
+      targetLanguage: targetLang,
+      cleanLength: cleanSpeech.length,
+      sample: cleanSpeech.slice(0, 100),
+    });
+
+    if (!cleanSpeech) {
+      setPhase("idle");
+      setSpeakingMsgId(null);
+      return;
+    }
+
+    setPhase("generating_audio");
+
+    const controller = new AbortController();
+    activeAbortControllerRef.current = controller;
+
+    try {
+      const blob = await voicePostJsonBlob(
+        "/voice/speak",
+        {
+          text: cleanSpeech,
+          language: targetLang,
+        },
+        { signal: controller.signal, timeoutMs: 25000 }
+      );
+
+      console.log("[Voice Assistant TTS Success]", {
+        status: 200,
+        bytes: blob.size,
+        contentType: blob.type,
+        language: targetLang,
+      });
+
+      const url = URL.createObjectURL(blob);
+      audioCacheRef.current.set(cacheKey, { blob, url });
+      setAudioUrl(url);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      setPhase("playing_audio");
+
+      audio.onended = () => {
+        setPhase("idle");
+        setSpeakingMsgId(null);
+        audioRef.current = null;
+      };
+      audio.onerror = (e) => {
+        console.error("[Voice Audio Element Playback Error]", e);
+        setError("Audio generation failed. Your text answer is still available.");
+        setPhase("idle");
+        setSpeakingMsgId(null);
+        audioRef.current = null;
+      };
+      await audio.play();
+    } catch (err: unknown) {
+      if (controller.signal.aborted) {
+        console.log("[Voice Assistant TTS] Request aborted.");
+        return;
+      }
+      const errInfo = classifyVoiceError(err, "tts");
+      if (errInfo.isRateLimit) {
+        startCooldown(errInfo.retryAfterSeconds);
+      }
+      console.warn("[Voice Sarvam TTS failed, evaluating browser voice fallback]", err);
+
+      // Fall back to browser speech synthesis ONLY if a matching native voice exists for the target language
+      if (hasBrowserVoiceFor(targetLang)) {
+        const langCode = targetLang === "Telugu" ? "te-IN" : targetLang === "Hindi" ? "hi-IN" : "en-IN";
+        const utterance = new SpeechSynthesisUtterance(cleanSpeech);
+        utterance.lang = langCode;
+        utterance.onend = () => {
+          setPhase("idle");
+          setSpeakingMsgId(null);
+        };
+        utterance.onerror = () => {
+          setPhase("idle");
+          setSpeakingMsgId(null);
+        };
+        window.speechSynthesis.speak(utterance);
+        setPhase("playing_audio");
+      } else {
+        // Honest error handling per requirements: retain text and show clear error, do NOT speak English
+        setError(errInfo.message);
+        setPhase("idle");
+        setSpeakingMsgId(null);
+      }
+    } finally {
+      if (activeAbortControllerRef.current === controller) {
+        activeAbortControllerRef.current = null;
+      }
+    }
+  };
+
+  // ── Ask Question (Typed or Transcribed) ──
+  const submitQuestion = async (questionText: string, fromVoice = false) => {
+    const q = questionText.trim();
+    if (!q) return;
+
+    // Prevent submission while already busy or cooling down
+    if (phase === "advising" || phase === "transcribing" || phase === "generating_audio" || cooldownRemaining > 0) {
+      return;
+    }
+
+    // Cancel any previous pending request
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+      activeAbortControllerRef.current = null;
+    }
+
+    stopAudio();
+    setError(null);
+    if (!fromVoice) {
+      setQuery("");
+    }
+
+    const now = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const userMsgId = `user-${Date.now()}`;
+    const activeLang = selectedLanguageRef.current;
+
+    // Detect user query language
+    const queryLang = detectLanguageFromText(q) || activeLang;
+
+    const userMessage: ChatMessage = {
+      id: userMsgId,
+      role: "user",
+      text: q,
+      timestamp: now,
+      language: queryLang,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setPhase("advising");
+
+    const controller = new AbortController();
+    activeAbortControllerRef.current = controller;
+
+    try {
+      console.log("[Voice Advice Request]", {
+        question: q,
+        language: activeLang,
+        crop: profile.crop,
+        district: profile.district,
+        state: profile.state,
+      });
+
+      const res = await apiPost<{
+        answer: string;
+        steps?: { tool: string; args: Record<string, unknown>; ok: boolean }[];
+        tools_used?: string[];
+        sources?: { name?: string; source?: string; fetched_at?: string }[];
+        warnings?: string[];
+      }>(
+        "/api/advice",
+        {
+          question: q,
+          crop: profile.crop,
+          state: profile.state,
+          district: profile.district,
+          city: profile.district,
+          language: activeLang,
+        },
+        { signal: controller.signal, timeoutMs: 35000 }
+      );
+
+      const ansText = res.answer || "No response received from advisory service.";
+      const ansLang = detectLanguageFromText(ansText) || activeLang;
+      const aiMsgId = `ai-${Date.now()}`;
+
+      const normalizedSources = (res.sources || []).map((s) => ({
+        name: s.name || s.source || "Government / Weather feed",
+        fetched_at: s.fetched_at,
+      }));
+
+      const aiMessage: ChatMessage = {
+        id: aiMsgId,
+        role: "assistant",
+        text: ansText,
+        timestamp: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+        language: ansLang,
+        toolsUsed: res.tools_used || res.steps?.map((s) => s.tool) || [],
+        sources: normalizedSources,
+        warnings: res.warnings || [],
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+      setPhase("idle");
+      // Clear input box now that advisory response succeeded
+      setQuery("");
+
+      // Speak response aloud in matching language (cached or fetched)
+      await speakMessage(aiMsgId, ansText, ansLang);
+    } catch (e: unknown) {
+      if (controller.signal.aborted) {
+        console.log("[Voice Advice Request Aborted]");
+        return;
+      }
+      console.error("[Voice Advice Error]", e);
+      // Preserve transcript in query input box so user can retry without recording again
+      setQuery(q);
+
+      const errInfo = classifyVoiceError(e, "advice");
+      if (errInfo.isRateLimit) {
+        startCooldown(errInfo.retryAfterSeconds);
+      }
+      setError(errInfo.message);
+      setPhase("idle");
+    } finally {
+      if (activeAbortControllerRef.current === controller) {
+        activeAbortControllerRef.current = null;
+      }
+    }
+  };
+
+  // ── Microphone Recording Flow ──
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  };
+
+  const startRecording = async () => {
+    if (phase !== "idle" || cooldownRemaining > 0) return;
+    stopAudio();
+    setError(null);
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setError("Unable to record audio. Please try again.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        if (isProcessingStopRef.current) return;
+        isProcessingStopRef.current = true;
+
+        try {
+          const rawBlob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+          if (rawBlob.size < 500) {
+            setError("No audio detected. Please record again.");
+            setPhase("idle");
+            return;
+          }
+
+          setPhase("transcribing");
+          const currentLang = selectedLanguageRef.current;
+
+          // Convert to 16 kHz mono linear-PCM WAV for Sarvam saaras:v4
+          let audioBlobToSend: Blob;
+          try {
+            audioBlobToSend = await convertBlobTo16kHzWav(rawBlob);
+          } catch (convErr) {
+            console.warn("[Voice STT] Audio conversion fallback to normalized webm:", convErr);
+            audioBlobToSend = new Blob([rawBlob], { type: "audio/webm" });
+          }
+
+          const form = new FormData();
+          form.append(
+            "audio",
+            audioBlobToSend,
+            audioBlobToSend.type === "audio/wav" ? "recording.wav" : "recording.webm"
+          );
+          form.append("language", currentLang);
+
+          const transcribeUrl = `/voice/transcribe?language=${encodeURIComponent(currentLang)}`;
+          console.log("[Voice STT Upload]", {
+            url: transcribeUrl,
+            language: currentLang,
+            bytes: audioBlobToSend.size,
+            mime: audioBlobToSend.type,
+          });
+
+          const controller = new AbortController();
+          activeAbortControllerRef.current = controller;
+
+          const res = await voicePostMultipart<{ transcript: string; language?: string }>(
+            transcribeUrl,
+            form,
+            { signal: controller.signal, timeoutMs: 25000 }
+          );
+          const transcript = res?.transcript?.trim() ?? "";
+
+          console.log("[Voice STT Result]", { transcript, language: res?.language || currentLang });
+
+          if (!transcript) {
+            setError("No speech detected. Please speak clearly into your microphone.");
+            setPhase("idle");
+            return;
+          }
+
+          // Populate query input box so farmer sees their words
+          setQuery(transcript);
+          // Automatically submit to advisory backend
+          await submitQuestion(transcript, true);
+        } catch (e: unknown) {
+          console.error("[Voice STT Error]", e);
+          const errInfo = classifyVoiceError(e, "stt");
+          if (errInfo.isRateLimit) {
+            startCooldown(errInfo.retryAfterSeconds);
+          }
+          setError(errInfo.message);
+          setPhase("idle");
+        } finally {
+          isProcessingStopRef.current = false;
+        }
+      };
+
+      recorder.start(250);
+      setPhase("recording");
+    } catch (e) {
+      console.error("[Voice Mic Error]", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("Permission") || msg.includes("NotAllowed") || msg.includes("denied")) {
+        setError("Please allow microphone access.");
+      } else {
+        setError("Unable to record audio. Please try again.");
+      }
+      setPhase("idle");
+    }
+  };
+
+  const toggleMic = () => {
+    if (phase === "recording") {
+      stopRecording();
+    } else if (phase === "playing_audio") {
+      stopAudio();
+    } else if (phase === "idle" && cooldownRemaining === 0) {
+      startRecording();
+    }
+  };
+
+  // ── Quick Starter Questions by Language ──
+  const quickQuestions: Record<SupportedVoiceLanguage, string[]> = {
+    Telugu: [
+      "నా వరి పంటకు ఏ ఎరువు వాడాలి?",
+      "రాబోయే 36 గంటల్లో వర్షం పడుతుందా?",
+      "ఖుంటి మార్కెట్‌లో వరి ప్రస్తుత ధర ఎంత?",
+      "పొలంలో నీటి నిల్వను ఎలా నియంత్రించాలి?",
+    ],
+    Hindi: [
+      "धान की फसल में कौन सा खाद डालें?",
+      "क्या अगले 36 घंटों में बारिश होगी?",
+      "खूंटी मंडी में धान का आज का भाव क्या है?",
+      "खेत में जल निकासी कैसे ठीक करें?",
+    ],
+    English: [
+      "Which fertilizer should I apply for paddy?",
+      "Will it rain in Khunti in the next 36 hours?",
+      "What is today's modal price for paddy in Khunti mandi?",
+      "How should I manage field drainage after heavy rain?",
+    ],
+  };
+
+  const activeQuick = quickQuestions[selectedLanguage] || quickQuestions.English;
+  const isLoading = phase === "transcribing" || phase === "advising" || phase === "generating_audio";
+  const isBusy = phase !== "idle" || cooldownRemaining > 0;
+
+  return (
+    <div className="module-layout voice-layout">
+      <div className="voice-primary">
+        <section className="voice-card-modern">
+          {/* Top Bar: Title & Language Dropdown */}
+          <div className="voice-topbar">
+            <div className="voice-topbar-title">
+              <div className="ai-avatar">
+                <Leaf size={18} />
+              </div>
+              <div>
+                <h2>Farmly Voice Assistant</h2>
+                <p>
+                  Live advisory for {profile.crop} · {profile.district}, {profile.state}
+                </p>
+              </div>
+            </div>
+
+            <label className="voice-lang-dropdown">
+              <span>🌐 Language:</span>
+              <select
+                value={selectedLanguage}
+                onChange={(e) => {
+                  handleLanguageChange(e.target.value as SupportedVoiceLanguage);
+                }}
+                aria-label="Select voice assistant language"
+              >
+                <option value="Telugu">తెలుగు (Telugu)</option>
+                <option value="Hindi">हिंदी (Hindi)</option>
+                <option value="English">English</option>
+              </select>
+            </label>
+          </div>
+
+          {/* Conversation Feed */}
+          <div className="voice-chat-feed">
+            {messages.length === 0 ? (
+              <div className="voice-empty-state">
+                <div className="voice-empty-icon">
+                  <Mic size={24} />
+                </div>
+                <h3>Ask anything about your farm</h3>
+                <p>
+                  Speak into the microphone or type below. Get instant advice on fertilizer application, rain forecasts,
+                  and live mandi quotes in <strong>{selectedLanguage}</strong>.
+                </p>
+                <div className="voice-quick-tray" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+                  {activeQuick.map((q) => (
+                    <button
+                      key={q}
+                      className="voice-quick-chip"
+                      onClick={() => submitQuestion(q)}
+                      disabled={isBusy}
+                    >
+                      {q} <ArrowRight size={13} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={m.role === "user" ? "voice-bubble-user" : "voice-bubble-ai"}
+                >
+                  {m.role === "assistant" && (
+                    <div className="voice-bubble-ai-head">
+                      <span className="voice-ai-badge">
+                        <Leaf size={14} /> Farmly AI Live Advisor
+                      </span>
+                      <small style={{ color: "#7a8a77", fontSize: "11px" }}>{m.timestamp}</small>
+                    </div>
+                  )}
+
+                  <div className={m.role === "user" ? "" : "voice-ai-body"}>
+                    {m.text}
+                  </div>
+
+                  {m.role === "user" && (
+                    <div className="voice-bubble-meta">
+                      <span>{m.timestamp}</span>
+                    </div>
+                  )}
+
+                  {m.role === "assistant" && (
+                    <div className="voice-ai-footer">
+                      <button
+                        className={`voice-speak-pill ${
+                          speakingMsgId === m.id && phase === "playing_audio"
+                            ? "voice-speak-playing"
+                            : speakingMsgId === m.id && phase === "generating_audio"
+                            ? "voice-speak-loading"
+                            : "voice-speak-idle"
+                        }`}
+                        onClick={() => speakMessage(m.id, m.text, m.language)}
+                        disabled={isLoading || cooldownRemaining > 0}
+                        aria-label="Read answer aloud"
+                      >
+                        {speakingMsgId === m.id && phase === "generating_audio" ? (
+                          <>
+                            <LoaderCircle size={14} className="spin-icon" /> Preparing audio...
+                          </>
+                        ) : speakingMsgId === m.id && phase === "playing_audio" ? (
+                          <>
+                            <VolumeX size={14} /> Stop Audio ({m.language})
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 size={14} /> Listen in {m.language}
+                          </>
+                        )}
+                      </button>
+
+                      {(m.toolsUsed?.length || m.sources?.length || m.warnings?.length) ? (
+                        <details className="answer-audit" style={{ margin: 0 }}>
+                          <summary style={{ fontSize: "11px" }}>How I answered</summary>
+                          {m.toolsUsed && m.toolsUsed.length > 0 && (
+                            <p style={{ margin: "4px 0" }}>
+                              <strong>Tools:</strong> {m.toolsUsed.join(", ")}
+                            </p>
+                          )}
+                          {m.sources?.map((s, idx) => (
+                            <p key={idx} style={{ margin: "2px 0" }}>
+                              <strong>{s.name}</strong>
+                              {s.fetched_at ? ` · fetched ${s.fetched_at}` : ""}
+                            </p>
+                          ))}
+                          {m.warnings?.map((w, idx) => (
+                            <p key={idx} style={{ margin: "2px 0", color: "#b45309" }}>
+                              ⚠ {w}
+                            </p>
+                          ))}
+                        </details>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+            <div ref={feedEndRef} />
+          </div>
+
+          {/* Status Indicators */}
+          {phase === "recording" && (
+            <div className="voice-status-strip voice-status-recording">
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                🔴 Recording in {selectedLanguage}... Speak into your microphone
+              </span>
+              <button
+                className="text-action"
+                onClick={stopRecording}
+                style={{ color: "#c23b2b", fontWeight: 700 }}
+              >
+                Done Speaking
+              </button>
+            </div>
+          )}
+
+          {phase === "transcribing" && (
+            <div className="voice-status-strip voice-status-busy">
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <LoaderCircle size={15} className="spin-icon" /> Transcribing speech with Sarvam AI ({selectedLanguage})...
+              </span>
+            </div>
+          )}
+
+          {phase === "advising" && (
+            <div className="voice-status-strip voice-status-busy">
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <LoaderCircle size={15} className="spin-icon" /> Retrieving live weather & mandi data for {profile.district}...
+              </span>
+            </div>
+          )}
+
+          {phase === "generating_audio" && (
+            <div className="voice-status-strip voice-status-busy">
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <LoaderCircle size={15} className="spin-icon" /> Generating {selectedLanguage} voice with Sarvam AI...
+              </span>
+            </div>
+          )}
+
+          {phase === "playing_audio" && (
+            <div className="voice-status-strip voice-status-busy" style={{ background: "#edf5eb" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Volume2 size={15} /> Playing {selectedLanguage} audio...
+              </span>
+              <button className="text-action" onClick={stopAudio}>
+                Stop
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="voice-status-strip voice-status-error">
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Info size={15} /> {error}
+                {cooldownRemaining > 0 && (
+                  <span style={{ fontWeight: 700, marginLeft: "4px" }}>
+                    ({cooldownRemaining}s cooldown)
+                  </span>
+                )}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                {query.trim() && phase === "idle" && cooldownRemaining === 0 && !error.toLowerCase().includes("quota") && (
+                  <button
+                    className="text-action"
+                    onClick={() => {
+                      setError(null);
+                      submitQuestion(query);
+                    }}
+                    style={{ color: "#a82e22", fontWeight: 700 }}
+                  >
+                    Retry
+                  </button>
+                )}
+                <button className="text-action" onClick={() => setError(null)} style={{ color: "#a82e22" }}>
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bottom Input Controls Bar */}
+          <div className="voice-input-strip">
+            <button
+              className={`voice-mic-main ${phase === "recording" ? "voice-mic-active" : ""}`}
+              onClick={toggleMic}
+              disabled={isLoading || cooldownRemaining > 0}
+              aria-label={phase === "recording" ? "Stop recording" : "Start microphone recording"}
+              title={
+                cooldownRemaining > 0
+                  ? `Voice service cooling down (${cooldownRemaining}s)`
+                  : phase === "recording"
+                  ? "Stop recording"
+                  : "Speak your question"
+              }
+            >
+              {isLoading ? (
+                <LoaderCircle size={22} className="spin-icon" />
+              ) : phase === "recording" ? (
+                <MicOff size={22} />
+              ) : (
+                <Mic size={22} />
+              )}
+            </button>
+
+            <input
+              className="voice-text-box"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                  submitQuestion(query);
+                }
+              }}
+              placeholder={
+                cooldownRemaining > 0
+                  ? `The voice service is cooling down (${cooldownRemaining}s)...`
+                  : selectedLanguage === "Telugu"
+                  ? "మీ వ్యవసాయ ప్రశ్నను తెలుగులో టైప్ చేయండి లేదా మైక్ నొక్కండి..."
+                  : selectedLanguage === "Hindi"
+                  ? "अपना कृषि प्रश्न हिंदी में लिखें या माइक दबाएं..."
+                  : "Type your farming question in English or tap the mic..."
+              }
+              aria-label="Farming question input"
+              disabled={isBusy}
+            />
+
+            <button
+              className="voice-send-main"
+              onClick={() => submitQuestion(query)}
+              disabled={isBusy || !query.trim()}
+              aria-label="Send question"
+            >
+              <Send size={18} />
+            </button>
+          </div>
+
+          {/* Quick starter chips row */}
+          {messages.length > 0 && (
+            <div className="voice-quick-tray">
+              {activeQuick.slice(0, 3).map((q) => (
+                <button
+                  key={q}
+                  className="voice-quick-chip"
+                  onClick={() => submitQuestion(q)}
+                  disabled={isBusy}
+                >
+                  {q} <ArrowRight size={12} />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <aside className="voice-sidebar">
+        <Card className="conversation-card">
+          <div className="side-card-title">
+            <div>
+              <span className="card-kicker">QUICK QUESTIONS</span>
+              <h3>Suggested for {selectedLanguage}</h3>
+            </div>
+            <CircleHelp size={17} />
+          </div>
+          <div className="question-list">
+            {activeQuick.map((question) => (
+              <button
+                key={question}
+                onClick={() => submitQuestion(question)}
+                disabled={isBusy}
+              >
+                <span>{question}</span>
+                <ArrowRight size={14} />
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="language-info-card">
+          <div className="language-roundel">
+            {selectedLanguage === "Telugu" ? "తె" : selectedLanguage === "Hindi" ? "अ" : "En"}
+          </div>
+          <div>
+            <strong>Voice in {selectedLanguage}</strong>
+            <p>
+              Powered by Sarvam AI for natural speech recognition and crystal-clear pronunciation in Indian languages.
+            </p>
+          </div>
+        </Card>
+      </aside>
     </div>
-    <aside className="voice-sidebar"><Card className="conversation-card"><div className="side-card-title"><div><span className="card-kicker">QUICK QUESTIONS</span><h3>Where shall we start?</h3></div><CircleHelp size={17} /></div><div className="question-list">{["నా వరి పంటకు ఏ ఎరువు వాడాలి?", "Will it rain tomorrow?", "How should I prepare my field?", "Where can I check scheme eligibility?"].map((question) => <button key={question} onClick={() => handleAsk(question)}><span>{question}</span><ArrowRight size={15} /></button>)}</div></Card><Card className="language-info-card"><div className="language-roundel">अ</div><div><strong>Your language, your choice.</strong><p>Change your language from the top of the screen. Voice input depends on browser support.</p></div></Card><SampleNotice>Farmly AI uses preset demonstration responses. No live AI service is connected.</SampleNotice></aside>
-  </div>
+  );
 }
 
 export function WeatherScreen() {
@@ -882,17 +1824,6 @@ export function MandiScreen() {
   );
 }
 
-export function SoilScreen() {
-  const [crop, setCrop] = useState("Paddy")
-  const [stage, setStage] = useState("Flowering")
-  const [soilPh, setSoilPh] = useState(6.2)
-  const [showResult, setShowResult] = useState(false)
-  const [uploadedFile, setUploadedFile] = useState("")
-  return <div className="module-layout"><div className="module-main"><div className="soil-overview-grid"><Card className="soil-summary-card"><div className="soil-summary-head"><div><span className="card-kicker">FIELD 01 · DEMO TEST DATA</span><h3>Your soil snapshot</h3></div><span className="sample-chip">SAMPLE</span></div><div className="ph-display"><div className="ph-gauge"><span><strong>6.2</strong><small>pH</small></span><i /></div><div className="ph-copy"><strong>Slightly acidic</strong><p>Many crops grow in this range, but local recommendations depend on the crop and soil test.</p><span className="ph-scale-label">Illustrative reading · lab test recommended</span></div></div><div className="soil-metrics-list"><MetricBar label="Nitrogen (N)" value="Low" percent={34} tone="bar-amber" /><MetricBar label="Phosphorus (P)" value="Medium" percent={61} tone="bar-green" /><MetricBar label="Potassium (K)" value="Good" percent={78} tone="bar-deep" /><MetricBar label="Organic carbon" value="0.62%" percent={56} tone="bar-blue" /></div><div className="soil-moisture-row"><span><DropletsIcon /> Soil moisture</span><strong>42%</strong><div className="soil-moisture-bar"><i /></div><small>Sample reading</small></div></Card><Card className="soil-health-card"><span className="card-kicker">A FRIENDLY REMINDER</span><div className="soil-health-illustration"><div><Leaf size={29} /></div><span /><i /></div><h3>Start with a soil test.</h3><p>Nitrogen may need attention in this sample profile. A laboratory test is the right first step before choosing any fertilizer.</p><a href="https://soilhealth.dac.gov.in/" target="_blank" rel="noreferrer">Learn about Soil Health Cards <ExternalLink size={13} /></a></Card></div>
-      <Card className="soil-recommend-form"><div className="module-card-heading"><div><span className="card-kicker">ILLUSTRATIVE TOOL</span><h3>Explore a soil-aware recommendation</h3><p>Use test results where available; this tool does not prescribe fertilizer amounts.</p></div><span className="form-leaf"><Leaf size={18} /></span></div><div className="soil-form-grid"><label>Crop<select value={crop} onChange={(event) => setCrop(event.target.value)}>{crops.slice(0, 6).map((item) => <option key={item}>{item}</option>)}</select></label><label>Growth stage<select value={stage} onChange={(event) => setStage(event.target.value)}>{["Sowing", "Vegetative", "Flowering", "Harvest"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Soil pH<input type="number" min="3" max="10" step="0.1" value={soilPh} onChange={(event) => setSoilPh(Number(event.target.value))} /></label><label>Farm area (acres)<input type="number" defaultValue="2.5" min="0.1" /></label></div><button className="primary-action" onClick={() => setShowResult(true)}>View soil guidance <ArrowRight size={15} /></button>{showResult && <div className="soil-result" role="status"><Check size={17} /><div><strong>For {crop.toLowerCase()} at {stage.toLowerCase()}</strong><p>Your entered pH is {soilPh}. Compare this with a recent lab report and ask your local agriculture officer to interpret nutrient levels before applying inputs.</p></div></div>}</Card>
-    </div><aside className="module-aside"><Card className="soil-upload-card"><span className="card-kicker">HAVE A SOIL HEALTH CARD?</span><div className="upload-illustration"><FileText size={25} /></div><h3>Keep your soil report close.</h3><p>Upload your Soil Health Card to keep it handy. Demo uploads are not stored or sent anywhere.</p><label className="upload-button"><Plus size={15} /> Choose a file<input type="file" accept=".pdf,image/*" onChange={(event) => setUploadedFile(event.currentTarget.files?.[0]?.name || "")} /></label>{uploadedFile ? <small className="selected-file">{uploadedFile} · demo only</small> : <small>PDF or image · Not uploaded to a server</small>}</Card><SampleNotice>All soil values shown are demonstration values. For real recommendations, use a current laboratory soil test and local agricultural guidance.</SampleNotice><Card className="soil-info-card"><span className="card-kicker">READING YOUR REPORT</span>{[["pH", "Acidity or alkalinity"], ["N · P · K", "Key crop nutrients"], ["Organic carbon", "Soil organic matter indicator"]].map(([label, detail]) => <div key={label}><strong>{label}</strong><span>{detail}</span></div>)}</Card></aside></div>
-}
-
 export function CropPlannerScreen({ profile }: { profile: FarmerProfile }) {
   const [selectedCrop, setSelectedCrop] = useState(profile.crop || "Paddy")
   const [query, setQuery] = useState("")
@@ -926,7 +1857,7 @@ export function CropPlannerScreen({ profile }: { profile: FarmerProfile }) {
   }
   return <div className="planner-page"><div className="planner-intro"><div className="planner-intro-icon"><Sprout size={22} /></div><div><strong>A better season starts before the first seed.</strong><p>Choose a crop, tell us a little about your land, and make a plan you can discuss with your local agriculture advisor.</p></div><span>PLAN BUILDER</span></div>
     <div className="module-layout"><div className="module-main"><Card className="crop-picker-card"><div className="module-card-heading"><div><span className="card-kicker">01 · CHOOSE YOUR CROP</span><h3>What are you thinking of growing?</h3></div><label className="search-field crop-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search crops" /></label></div><div className="crop-choice-grid">{filteredCrops.map((item, index) => <button key={item} className={`crop-choice ${item === selectedCrop ? "planner-crop-selected" : ""}`} onClick={() => { setSelectedCrop(item); setSaved(false) }}><span className={`crop-emoji crop-tone-${index % 5}`}><Sprout size={14} /></span><strong>{item}</strong>{item === selectedCrop && <Check size={14} />}</button>)}</div></Card>
-      <Card className="farm-input-card"><div className="module-card-heading"><div><span className="card-kicker">02 · TELL US ABOUT YOUR FIELD</span><h3>Make this plan yours</h3></div><span className="location-mini"><MapPin size={13} /> {profile.district}, {profile.state}</span></div><div className="soil-form-grid planner-fields"><label>Farm area<input type="number" value={area} min="0.1" step="0.1" onChange={(event) => setArea(Math.max(0.1, Number(event.target.value)))} /><small>acres</small></label><label>Soil type<select value={soil} onChange={(event) => setSoil(event.target.value)}>{["Clay loam", "Sandy loam", "Black soil", "Red soil", "Alluvial", "Not sure"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Water access<select value={irrigation} onChange={(event) => setIrrigation(event.target.value)}>{["Rain-fed", "Canal", "Well / borewell", "Drip irrigation", "Other"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Growing season<select value={season} onChange={(event) => setSeason(event.target.value)}>{["Kharif", "Rabi", "Zaid"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Expected planting date<input type="date" defaultValue="2026-11-10" /></label></div></Card>
+      <Card className="farm-input-card"><div className="module-card-heading"><div><span className="card-kicker">02 · TELL US ABOUT YOUR FIELD</span><h3>Make this plan yours</h3></div><span className="location-mini"><MapPin size={13} /> {profile.district}, {profile.state}</span></div><div className="planner-form-grid planner-fields"><label>Farm area<input type="number" value={area} min="0.1" step="0.1" onChange={(event) => setArea(Math.max(0.1, Number(event.target.value)))} /><small>acres</small></label><label>Soil type<select value={soil} onChange={(event) => setSoil(event.target.value)}>{["Clay loam", "Sandy loam", "Black soil", "Red soil", "Alluvial", "Not sure"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Water access<select value={irrigation} onChange={(event) => setIrrigation(event.target.value)}>{["Rain-fed", "Canal", "Well / borewell", "Drip irrigation", "Other"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Growing season<select value={season} onChange={(event) => setSeason(event.target.value)}>{["Kharif", "Rabi", "Zaid"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Expected planting date<input type="date" defaultValue="2026-11-10" /></label></div></Card>
       <Card className="crop-plan-card"><div className="module-card-heading"><div><span className="card-kicker">03 · YOUR {selectedCrop.toUpperCase()} PLAN</span><h3>A practical starting point</h3><p>For {area} acres · {soil} · {season} season · {irrigation}</p></div><span className="sample-chip">DEMO PLAN</span></div><div className="plan-grid">{[["01", "Seed selection", "Choose certified seed suited to your district and planting window. Confirm variety and seed rate with your local extension office."], ["02", "Nutrients & manure", "Use your latest soil test to decide nutrient needs. Avoid applying fertilizer without crop- and soil-specific advice."], ["03", "Land preparation", "Prepare a level field with drainage appropriate to local rainfall and your crop’s needs."], ["04", "Water plan", "Match irrigation to rainfall and crop stage. Paddy needs reliable water, with field drainage between heavy showers."], ["05", "Tools & equipment", "Plan access to a seed drill or transplanting tools, hand tools, and safe protective equipment."], ["06", "Crop protection", "Scout fields regularly; use prevention and integrated pest management. Seek local diagnosis before any treatment."]].map(([num, title, detail]) => <div className="plan-item" key={num}><span>{num}</span><div><strong>{title}</strong><p>{selectedCrop === "Paddy" && num === "04" ? "For paddy, coordinate water availability with growth stage. Keep drains clear during intense monsoon rain." : detail}</p></div></div>)}</div><SampleNotice>Varieties, seed rates, nutrient rates, and crop timing vary by district and season. Confirm with KVK or your state agriculture department.</SampleNotice></Card>
       <Card className="crop-timeline-card"><div className="module-card-heading"><div><span className="card-kicker">04 · THE SEASON AHEAD</span><h3>Your growing timeline</h3></div><span className="timeline-season">{season} · illustrative</span></div><div className="timeline-track" role="list" aria-label="Growing season stages. Scroll horizontally to view all nine stages." tabIndex={0}>{timeline.map((step, index) => <div className={`timeline-step ${index === 0 ? "timeline-current" : ""}`} key={step} role="listitem"><span>{index + 1}</span><strong>{step}</strong><small>{index === 0 ? "Start here" : `Stage ${index + 1}`}</small></div>)}</div></Card>
     </div><aside className="module-aside"><Card className="crop-budget-card"><span className="card-kicker">05 · ESTIMATED BUDGET</span><h3>Plan your spending, too.</h3><p>Editable sample costs scaled to your farm area.</p><div className="budget-list">{editableCosts.map((item) => <div key={item.label}><span>{item.label}</span><label>₹<input type="number" aria-label={`${item.label} cost per acre`} value={item.amount} min="0" onChange={(event) => setCostValues((current) => ({ ...current, [item.label]: Math.max(0, Number(event.target.value)) }))} /></label></div>)}</div><div className="budget-total"><span>Estimated total</span><strong>₹{Math.round(total).toLocaleString("en-IN")}</strong></div><small>₹{baseCost.toLocaleString("en-IN")} / acre · demo estimate</small><button className="primary-action full-action" onClick={downloadPlan}><Download size={15} /> Download crop plan</button><button className="outline-action full-action" onClick={() => window.print()}><FileText size={15} /> Print this plan</button>{saved && <div className="saved-inline"><Check size={14} /> Saved to this browser</div>}<button className="text-action save-plan" onClick={savePlan}><Plus size={14} /> Save plan to My Farm</button></Card><Card className="crop-fit-card"><span className="card-kicker">FARMLY SUGGESTS</span><div className="fit-icon"><Leaf size={18} /></div><h3>{selectedCrop} can be one option.</h3><p>Compare water access, soil test results, planting window, and likely market access before deciding.</p><span className="fit-footnote"><Info size={13} /> Not a yield or profit guarantee.</span></Card><SampleNotice>Budget values are editable and illustrative, not quotations or verified local input costs.</SampleNotice></aside></div>
@@ -936,19 +1867,725 @@ export function CropPlannerScreen({ profile }: { profile: FarmerProfile }) {
 export function SchemesScreen({ profile }: { profile: FarmerProfile }) {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState("All schemes")
-  const [selected, setSelected] = useState<string | null>(null)
+  const [stateFilter, setStateFilter] = useState("All states")
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
-  const [landSize, setLandSize] = useState("Small farmer (up to 2 ha)")
-  const categories = ["All schemes", "Income support", "Crop insurance", "Agricultural credit", "Irrigation subsidy", "Soil & inputs", "State support"]
-  const visible = schemeData.filter((scheme) => (filter === "All schemes" || scheme.category.toLowerCase() === filter.toLowerCase()) && `${scheme.name} ${scheme.full} ${scheme.category}`.toLowerCase().includes(search.toLowerCase()))
-  const detail = schemeData.find((scheme) => scheme.id === selected)
-  return <div className="schemes-page"><div className="scheme-hero"><div className="scheme-hero-copy"><span className="card-kicker">A LITTLE SUPPORT GOES A LONG WAY</span><h2>There may be a scheme<br />for your next step.</h2><p>Explore support programmes for income, crop insurance, credit, irrigation, and more.</p><button onClick={() => { setProfileOpen(true); document.getElementById("scheme-matcher")?.scrollIntoView({ behavior: "smooth", block: "start" }) }}>Find schemes for my farm <ArrowRight size={15} /></button></div><div className="scheme-hero-art"><div className="scheme-sun" /><div className="scheme-leaf leaf-one"><Leaf size={59} /></div><div className="scheme-leaf leaf-two"><Leaf size={40} /></div><span>FARMER<br />SUPPORT</span></div><span className="scheme-hero-mark">₹</span></div>
-    <div className="scheme-stat-strip"><div><strong>6</strong><span>PROGRAMMES TO EXPLORE</span></div><div><strong>3</strong><span>COULD BE RELEVANT</span></div><div><strong>0</strong><span>OFFICIAL APPROVALS CLAIMED</span></div><span>PRELIMINARY GUIDANCE ONLY</span></div>
-    <div className="scheme-layout"><div className="scheme-results"><div className="scheme-results-heading"><div><span className="card-kicker">EXPLORE SUPPORT</span><h3>Programmes worth knowing about</h3></div><span className="sample-chip">VERIFY WITH OFFICIAL PORTALS</span></div><label className="scheme-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search schemes by name or benefit" /><Filter size={15} /></label><div className="scheme-categories">{categories.map((category) => <button key={category} className={filter === category ? "category-selected" : ""} onClick={() => setFilter(category)}>{category}</button>)}</div><div className="scheme-card-list">{visible.map((scheme) => <article className="scheme-card" key={scheme.id}><div className={`scheme-symbol ${scheme.color}`}>{scheme.mark}</div><div className="scheme-card-body"><div className="scheme-card-meta"><span>{scheme.category}</span><span className="scheme-type">{scheme.type}</span></div><h4>{scheme.name}</h4><p className="scheme-full-name">{scheme.full}</p><p className="scheme-card-description">{scheme.about}</p><div className="scheme-benefit-row"><span><strong>Potential benefit</strong>{scheme.benefit}</span><span><strong>Location</strong>{scheme.id === "jharkhand" ? "Jharkhand" : "India · eligibility varies"}</span><span><strong>Farmly match</strong><i className={scheme.fit === "Potentially relevant" ? "match-positive" : "match-caution"}>{scheme.fit}</i></span></div><div className="scheme-card-footer"><span><Info size={13} /> Information is illustrative · verify latest details</span><div><button onClick={() => setSelected(scheme.id)}>Scheme details <ArrowRight size={14} /></button><a href={scheme.url} target="_blank" rel="noreferrer">Official source <ExternalLink size={12} /></a></div></div></div></article>)}</div>{visible.length === 0 && <div className="empty-schemes">No schemes match those filters. Try a different search.</div>}</div>
-      <aside className="scheme-aside"><Card className="matcher-card" ><div id="scheme-matcher" /><span className="card-kicker">PERSONALIZED DISCOVERY</span><h3>Find schemes for my farm</h3><p>A few details help show potentially relevant programmes. Skip anything you don’t know.</p><label>State<select defaultValue={profile.state}><option>Jharkhand</option><option>Bihar</option><option>Odisha</option><option>West Bengal</option></select></label><label>Landholding<select value={landSize} onChange={(event) => setLandSize(event.target.value)}><option>Small farmer (up to 2 ha)</option><option>Marginal farmer (up to 1 ha)</option><option>More than 2 ha</option><option>Not sure</option></select></label><label>Land status<select defaultValue="Owner / co-owner"><option>Owner / co-owner</option><option>Tenant farmer</option><option>Not sure</option></select></label><label>Main crop<select defaultValue={profile.crop}><option>{profile.crop}</option><option>Maize</option><option>Wheat</option><option>Vegetables</option><option>Other</option></select></label><button className="primary-action full-action" onClick={() => setProfileOpen(!profileOpen)}>{profileOpen ? "Hide match summary" : "See potential matches"} <ArrowRight size={15} /></button>{profileOpen && <div className="match-summary"><strong><BadgeCheck size={15} /> Potentially relevant</strong><p>PMFBY and KCC may be worth exploring for your farm profile. Requirements depend on notified crops, district, lender, and current enrollment windows.</p><strong className="needs-check"><CircleHelp size={15} /> More information needed</strong><p>PM-KISAN and irrigation support require official checks of land records, exclusions, and state programme availability.</p></div>}<div className="privacy-note"><ShieldCheck size={14} /> These details stay in this demo experience.</div></Card><div className="eligibility-disclaimer"><Info size={16} /><p>Eligibility shown by Farmly.AI is preliminary guidance. Final eligibility and approval are determined by the relevant government department.</p></div><Card className="official-links-card"><span className="card-kicker">TRUSTED STARTING POINTS</span>{[["myScheme", "https://www.myscheme.gov.in/"], ["PM-KISAN", "https://pmkisan.gov.in/"], ["PMFBY", "https://pmfby.gov.in/"], ["Jharkhand Govt.", "https://www.jharkhand.gov.in/"]].map(([name, url]) => <a key={name} href={url} target="_blank" rel="noreferrer"><span>{name}</span><ExternalLink size={13} /></a>)}</Card></aside></div>
-    {detail && <div className="modal-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setSelected(null) }}><section className="scheme-modal" role="dialog" aria-modal="true" aria-labelledby="scheme-modal-title"><button className="icon-button modal-close" onClick={() => setSelected(null)} aria-label="Close scheme details"><X size={19} /></button><span className="card-kicker">{detail.type} · PRELIMINARY INFORMATION</span><div className={`scheme-symbol ${detail.color}`}>{detail.mark}</div><h2 id="scheme-modal-title">{detail.full}</h2><p>{detail.about}</p><div className="modal-detail-grid"><div><strong>Potential benefit</strong><span>{detail.benefit}</span></div><div><strong>Common documents to ask about</strong><span>Requirements vary; check scheme-specific portal, bank, and state guidance. Do not assume a universal checklist.</span></div><div><strong>About eligibility</strong><span>{detail.fitReason}</span></div><div><strong>Next step</strong><span>Check the current official notification or contact your district agriculture office.</span></div></div><div className="modal-disclaimer"><Info size={15} /> Demo information, not official or current eligibility confirmation.</div><a className="primary-action modal-official-link" href={detail.url} target="_blank" rel="noreferrer">Visit official information source <ExternalLink size={14} /></a></section></div>}
-  </div>
+
+  // Matcher input state initialized with farmer profile
+  const [matcherState, setMatcherState] = useState(profile.state || "Jharkhand")
+  const [matcherDistrict, setMatcherDistrict] = useState(profile.district || "Khunti")
+  const [matcherAcres, setMatcherAcres] = useState(profile.acres || "2.5")
+  const [matcherLandStatus, setMatcherLandStatus] = useState("Owner")
+  const [matcherCrop, setMatcherCrop] = useState(profile.crop || "Paddy")
+  const [matcherIrrigation, setMatcherIrrigation] = useState(profile.irrigation || "Rain-fed")
+
+  const categories = [
+    "All schemes",
+    "Income support",
+    "Crop insurance",
+    "Agricultural credit",
+    "Irrigation subsidy",
+    "Soil & inputs",
+    "Farm mechanization",
+    "State support",
+  ]
+
+  // Live queries to backend
+  const {
+    data: schemesResponse,
+    loading: schemesLoading,
+    error: schemesError,
+    refetch: refetchSchemes,
+  } = useSchemes({
+    category: filter === "All schemes" ? undefined : filter,
+    state: stateFilter === "All states" ? undefined : stateFilter,
+    search: search.trim() || undefined,
+  })
+
+  const {
+    data: recoResponse,
+    loading: recoLoading,
+    refetch: refetchReco,
+  } = useRecommendedSchemes({
+    state: matcherState,
+    district: matcherDistrict,
+    crop: matcherCrop,
+    acres: matcherAcres,
+    land_status: matcherLandStatus,
+    irrigation: matcherIrrigation,
+  })
+
+  const { data: metaResponse } = useSchemesMetadata()
+
+  // Match map for quick lookup of farmer match score and fit
+  const recoMap = useMemo(() => {
+    const map = new Map<string, SchemeRecord>()
+    if (recoResponse?.recommendations) {
+      for (const r of recoResponse.recommendations) {
+        map.set(r.scheme_id, r)
+      }
+    }
+    return map
+  }, [recoResponse])
+
+  // Merge recommendation details into visible schemes
+  const visibleSchemes: SchemeRecord[] = useMemo(() => {
+    if (!schemesResponse?.schemes) return []
+    return schemesResponse.schemes.map((scheme) => {
+      const reco = recoMap.get(scheme.scheme_id)
+      if (reco) {
+        return {
+          ...scheme,
+          fit: reco.fit,
+          fit_status: reco.fit_status,
+          match_score: reco.match_score,
+          applicable_location: reco.applicable_location || scheme.state,
+          match_reasons: reco.match_reasons,
+          missing_information: reco.missing_information,
+        }
+      }
+      return {
+        ...scheme,
+        fit: scheme.government_level === "Central" ? "Potentially relevant" : "Check eligibility",
+        fit_status: "potential" as const,
+        applicable_location: scheme.state,
+      }
+    })
+  }, [schemesResponse, recoMap])
+
+  // Selected scheme for modal
+  const selectedScheme: SchemeRecord | null = useMemo(() => {
+    if (!selectedId) return null
+    return visibleSchemes.find((s) => s.scheme_id === selectedId) || null
+  }, [selectedId, visibleSchemes])
+
+  const formatBenefit = (b: SchemeRecord["benefits"]): string => {
+    if (!b) return "Varies by active notification"
+    if (typeof b === "string") return b
+    return b.amount || b.frequency || "Financial / Input support"
+  }
+
+  const formatVerifiedDate = (isoStr?: string) => {
+    if (!isoStr) return "Nov 2026"
+    try {
+      const d = new Date(isoStr)
+      return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    } catch {
+      return "Nov 2026"
+    }
+  }
+
+  return (
+    <div className="schemes-page">
+      {/* Hero Banner */}
+      <div className="scheme-hero">
+        <div className="scheme-hero-copy">
+          <span className="card-kicker">GOVERNMENT SCHEMES &amp; SUPPORT DISCOVERY</span>
+          <h2>
+            Verified support programmes<br />for your farm journey.
+          </h2>
+          <p>
+            Explore Central and State Government agricultural schemes backed by official data.gov.in,
+            myScheme, and Department of Agriculture portals.
+          </p>
+          <button
+            onClick={() => {
+              setProfileOpen(true)
+              document.getElementById("scheme-matcher")?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }}
+          >
+            Find schemes for my farm <ArrowRight size={15} />
+          </button>
+        </div>
+        <div className="scheme-hero-art">
+          <div className="scheme-sun" />
+          <div className="scheme-leaf leaf-one">
+            <Leaf size={59} />
+          </div>
+          <div className="scheme-leaf leaf-two">
+            <Leaf size={40} />
+          </div>
+          <span>
+            GOVERNMENT<br />DATA
+          </span>
+        </div>
+        <span className="scheme-hero-mark">₹</span>
+      </div>
+
+      {/* Real Statistics Strip */}
+      <div className="scheme-stat-strip">
+        <div>
+          <strong>{schemesResponse?.total ?? (schemesLoading ? "…" : 0)}</strong>
+          <span>PROGRAMMES DISCOVERED</span>
+        </div>
+        <div>
+          <strong>{recoResponse?.summary?.potential_count ?? (recoLoading ? "…" : 0)}</strong>
+          <span>POTENTIALLY RELEVANT</span>
+        </div>
+        <div>
+          <strong>{recoResponse?.summary?.confirmed_count ?? (recoLoading ? "…" : 0)}</strong>
+          <span>ELIGIBILITY CONFIRMED</span>
+        </div>
+        <div>
+          <strong>0</strong>
+          <span>OFFICIAL APPROVALS CLAIMED</span>
+        </div>
+        <span>PRELIMINARY GUIDANCE ONLY · VERIFY AT OFFICIAL PORTALS</span>
+      </div>
+
+      {/* Main Layout */}
+      <div className="scheme-layout">
+        {/* Results Column */}
+        <div className="scheme-results">
+          <div className="scheme-results-heading">
+            <div>
+              <span className="card-kicker">OFFICIAL AGRICULTURAL PROGRAMMES</span>
+              <h3>Verified Central &amp; State Schemes</h3>
+            </div>
+            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+              <span className="scheme-verified-tag">
+                <ShieldCheck size={11} /> VERIFIED OFFICIAL DATA
+              </span>
+              <button
+                className="icon-button"
+                onClick={() => {
+                  refetchSchemes()
+                  refetchReco()
+                }}
+                title="Refresh scheme data"
+                aria-label="Refresh schemes"
+              >
+                <RefreshCw size={13} className={schemesLoading ? "spin-animate" : ""} />
+              </button>
+            </div>
+          </div>
+
+          {/* Search and Filters */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <label className="scheme-search">
+              <Search size={16} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search schemes by name, department, or benefit (e.g. PM-KISAN, crop insurance, credit, drip)"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  style={{ border: 0, background: "transparent", cursor: "pointer", color: "#888" }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </label>
+
+            {/* State filter row */}
+            <div className="scheme-state-filter">
+              <span className="scheme-state-filter-label">Filter State:</span>
+              <select
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value)}
+                aria-label="Filter schemes by state"
+              >
+                <option value="All states">All States &amp; Central Schemes</option>
+                <option value="Jharkhand">Jharkhand</option>
+                <option value="Andhra Pradesh">Andhra Pradesh</option>
+              </select>
+              {stateFilter !== "All states" && (
+                <button
+                  type="button"
+                  className="scheme-clear-btn"
+                  onClick={() => setStateFilter("All states")}
+                >
+                  Clear state filter
+                </button>
+              )}
+            </div>
+
+            {/* Categories */}
+            <div className="scheme-categories">
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  className={filter === category ? "category-selected" : ""}
+                  onClick={() => setFilter(category)}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Loading State */}
+          {schemesLoading && !visibleSchemes.length && (
+            <div className="scheme-loading-state">
+              <LoaderCircle size={24} className="spin-animate" style={{ color: "#2f6938" }} />
+              <p>Fetching verified government schemes from official platform...</p>
+            </div>
+          )}
+
+          {/* Error State */}
+          {schemesError && (
+            <div className="scheme-error-state">
+              <Info size={20} style={{ color: "#c66900" }} />
+              <p>Unable to connect to schemes service: {schemesError}</p>
+              <button className="scheme-retry-btn" onClick={() => refetchSchemes()}>
+                <RefreshCw size={13} /> Retry connection
+              </button>
+            </div>
+          )}
+
+          {/* Schemes Card List */}
+          {!schemesLoading && visibleSchemes.length > 0 && (
+            <div className="scheme-card-list">
+              {visibleSchemes.map((scheme) => {
+                const isConfirmed = scheme.fit === "Eligibility confirmed"
+                const isPotential = scheme.fit === "Potentially relevant"
+
+                return (
+                  <article className="scheme-card" key={scheme.scheme_id}>
+                    <div className={`scheme-symbol ${scheme.color}`}>{scheme.mark}</div>
+                    <div className="scheme-card-body">
+                      <div className="scheme-card-meta">
+                        <span>{scheme.scheme_category}</span>
+                        <span className="scheme-type">
+                          {scheme.government_level} {scheme.state !== "All India" ? `· ${scheme.state}` : "· All India"}
+                        </span>
+                      </div>
+
+                      <h4>{scheme.scheme_name}</h4>
+                      <p className="scheme-full-name">{scheme.full_name}</p>
+                      <small className="scheme-dept-text">{scheme.ministry_or_department}</small>
+                      <p className="scheme-card-description">{scheme.short_description || scheme.description}</p>
+
+                      <div className="scheme-benefit-row">
+                        <span className="scheme-benefit-item">
+                          <strong>Potential benefit</strong>
+                          <span>{formatBenefit(scheme.benefits)}</span>
+                        </span>
+                        <span className="scheme-benefit-item">
+                          <strong>Applicable location</strong>
+                          <span>{scheme.applicable_location || scheme.state}</span>
+                        </span>
+                        <span className="scheme-benefit-item">
+                          <strong>Farmly match</strong>
+                          <i
+                            className={
+                              isConfirmed
+                                ? "match-positive"
+                                : isPotential
+                                ? "match-caution"
+                                : "match-warning"
+                            }
+                          >
+                            {scheme.fit || "Potentially relevant"}
+                          </i>
+                        </span>
+                      </div>
+
+                      <div className="scheme-card-footer">
+                        <span className="scheme-verified-meta">
+                          <ShieldCheck size={12} style={{ color: "#3a753e" }} />
+                          Verified: {formatVerifiedDate(scheme.last_verified_at)}
+                          {scheme.live_data?.total_records_tracked && (
+                            <span style={{ color: "#1976d2", marginLeft: "4px" }}>
+                              · data.gov.in tracked
+                            </span>
+                          )}
+                        </span>
+                        <div>
+                          <button onClick={() => setSelectedId(scheme.scheme_id)}>
+                            Scheme details <ArrowRight size={14} />
+                          </button>
+                          <a
+                            href={scheme.official_information_url || scheme.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Official source <ExternalLink size={12} />
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!schemesLoading && !schemesError && visibleSchemes.length === 0 && (
+            <div className="empty-schemes">
+              <p className="empty-schemes-title">No government schemes match those filters.</p>
+              <p className="empty-schemes-subtext">
+                Try searching a different term or reset filters.
+              </p>
+              <button
+                className="outline-action"
+                onClick={() => {
+                  setSearch("")
+                  setFilter("All schemes")
+                  setStateFilter("All states")
+                }}
+              >
+                Reset all filters
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Personalized Discovery Sidebar */}
+        <aside className="scheme-aside">
+          <Card className="matcher-card">
+            <div id="scheme-matcher" />
+            <span className="card-kicker">PERSONALIZED DISCOVERY ENGINE</span>
+            <h3>Find schemes for my farm</h3>
+            <p>
+              Evaluate your farm against Central and State guidelines using live rule matching.
+            </p>
+
+            <label>
+              State
+              <select
+                value={matcherState}
+                onChange={(event) => {
+                  setMatcherState(event.target.value)
+                  if (event.target.value === "Andhra Pradesh") {
+                    setMatcherDistrict("Guntur")
+                  } else if (event.target.value === "Jharkhand") {
+                    setMatcherDistrict("Khunti")
+                  }
+                }}
+              >
+                <option value="Jharkhand">Jharkhand</option>
+                <option value="Andhra Pradesh">Andhra Pradesh</option>
+                <option value="Bihar">Bihar</option>
+                <option value="Odisha">Odisha</option>
+                <option value="West Bengal">West Bengal</option>
+              </select>
+            </label>
+
+            <label>
+              District
+              <input
+                value={matcherDistrict}
+                onChange={(e) => setMatcherDistrict(e.target.value)}
+                placeholder="District name"
+              />
+            </label>
+
+            <label>
+              Landholding (acres)
+              <input
+                type="number"
+                min="0.1"
+                step="0.5"
+                value={matcherAcres}
+                onChange={(event) => setMatcherAcres(event.target.value)}
+              />
+            </label>
+
+            <label>
+              Land status
+              <select
+                value={matcherLandStatus}
+                onChange={(e) => setMatcherLandStatus(e.target.value)}
+              >
+                <option value="Owner">Owner / co-owner (RoR in name)</option>
+                <option value="Tenant farmer">Tenant farmer / Bataydar</option>
+                <option value="Oral lessee">Oral lessee / Sharecropper</option>
+              </select>
+            </label>
+
+            <label>
+              Main crop
+              <select
+                value={matcherCrop}
+                onChange={(event) => setMatcherCrop(event.target.value)}
+              >
+                <option value="Paddy">Paddy</option>
+                <option value="Wheat">Wheat</option>
+                <option value="Maize">Maize</option>
+                <option value="Mustard">Mustard</option>
+                <option value="Cotton">Cotton</option>
+                <option value="Groundnut">Groundnut</option>
+                <option value="Tomato">Tomato</option>
+                <option value="Potato">Potato</option>
+                <option value="Pulses">Pulses</option>
+              </select>
+            </label>
+
+            <label>
+              Irrigation access
+              <select
+                value={matcherIrrigation}
+                onChange={(e) => setMatcherIrrigation(e.target.value)}
+              >
+                <option value="Rain-fed">Rain-fed</option>
+                <option value="Canal">Canal</option>
+                <option value="Well / borewell">Well / borewell</option>
+                <option value="Drip irrigation">Drip irrigation</option>
+              </select>
+            </label>
+
+            <button
+              className="primary-action full-action"
+              onClick={() => setProfileOpen(!profileOpen)}
+            >
+              {profileOpen ? "Hide match summary" : "See potential matches"} <ArrowRight size={15} />
+            </button>
+
+            {profileOpen && (
+              <div className="match-summary">
+                {recoLoading ? (
+                  <div className="matcher-loading">
+                    <LoaderCircle size={16} className="spin-animate" /> Calculating live matches...
+                  </div>
+                ) : (
+                  <>
+                    <strong>
+                      <BadgeCheck size={17} /> {recoResponse?.summary?.confirmed_count ?? 1} Confirmed · {recoResponse?.summary?.potential_count ?? 0} Potentially relevant
+                    </strong>
+                    <p>
+                      Based on your location in <strong>{matcherDistrict}, {matcherState}</strong> and {matcherAcres} acres of {matcherCrop}, your farm qualifies for Central and state support.
+                    </p>
+
+                    {/* Top match reasons */}
+                    {recoResponse?.recommendations?.[0]?.match_reasons && (
+                      <div className="match-reasons-box">
+                        <strong>Why you match:</strong>
+                        <ul>
+                          {recoResponse.recommendations[0].match_reasons.slice(0, 2).map((r, idx) => (
+                            <li key={idx}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Missing information notice */}
+                    {recoResponse?.recommendations?.some((r) => r.missing_information?.length) && (
+                      <div className="match-missing-box">
+                        <strong className="needs-check">
+                          <CircleHelp size={16} /> Next verification steps
+                        </strong>
+                        <ul className="match-missing-list">
+                          {recoResponse.recommendations
+                            .flatMap((r) => r.missing_information || [])
+                            .slice(0, 3)
+                            .map((item, idx) => (
+                              <li key={idx}>{item}</li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="privacy-note">
+              <ShieldCheck size={14} /> Profile parameters remain on your secure Farmly instance.
+            </div>
+          </Card>
+
+          {/* Legal Disclaimer */}
+          <div className="eligibility-disclaimer">
+            <Info size={16} />
+            <p>
+              Eligibility shown by Farmly.AI is preliminary discovery guidance. Final eligibility,
+              verification, and fund disbursement are strictly determined by the relevant government
+              department or participating financial institution.
+            </p>
+          </div>
+
+          {/* Authoritative Links */}
+          <Card className="official-links-card">
+            <span className="card-kicker">OFFICIAL GOVERNMENT PORTALS</span>
+            {[
+              ["data.gov.in (Open Govt Data)", "https://data.gov.in/"],
+              ["myScheme National Platform", "https://www.myscheme.gov.in/"],
+              ["PM-KISAN Portal", "https://pmkisan.gov.in/"],
+              ["PMFBY Crop Insurance", "https://pmfby.gov.in/"],
+              ["Soil Health Management", "https://soilhealth.dac.gov.in/"],
+              ["Govt. of Jharkhand Agriculture", "https://agri.jharkhand.gov.in/"],
+              ["Govt. of AP Karshak / Agrisnet", "https://apagrisnet.gov.in/"],
+            ].map(([name, url]) => (
+              <a key={name} href={url} target="_blank" rel="noreferrer">
+                <span>{name}</span>
+                <ExternalLink size={13} />
+              </a>
+            ))}
+          </Card>
+        </aside>
+      </div>
+
+      {/* Comprehensive Scheme Details Modal */}
+      {selectedScheme && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setSelectedId(null)
+          }}
+        >
+          <section
+            className="scheme-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scheme-modal-title"
+          >
+            <button
+              className="icon-button modal-close"
+              onClick={() => setSelectedId(null)}
+              aria-label="Close scheme details"
+            >
+              <X size={19} />
+            </button>
+
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <span className="card-kicker">
+                {selectedScheme.government_level.toUpperCase()} GOVERNMENT · {selectedScheme.scheme_category.toUpperCase()}
+              </span>
+              <span className="scheme-verified-tag">
+                <ShieldCheck size={11} /> VERIFIED OFFICIAL SCHEME
+              </span>
+              {selectedScheme.live_data && (
+                <span className="live-data-badge">
+                  <RefreshCw size={10} /> Live data.gov.in feed connected
+                </span>
+              )}
+            </div>
+
+            <div className={`scheme-symbol ${selectedScheme.color}`}>{selectedScheme.mark}</div>
+
+            <h2 id="scheme-modal-title">{selectedScheme.full_name}</h2>
+            <small style={{ color: "#748270", fontWeight: 600, display: "block", marginBottom: "8px" }}>
+              {selectedScheme.ministry_or_department}
+            </small>
+
+            <p>{selectedScheme.description}</p>
+
+            {/* Live data details badge if present */}
+            {selectedScheme.live_data && (
+              <div className="modal-live-data-card">
+                <strong>Live Open Government Data (data.gov.in Resource {selectedScheme.live_data.resource_id}):</strong>
+                <span>
+                  Active Installment Release #{selectedScheme.live_data.latest_installment_release_no} (Quadrimester {selectedScheme.live_data.quadrimester_no}) · Tracked Beneficiaries: {selectedScheme.live_data.total_records_tracked?.toLocaleString("en-IN")}
+                </span>
+              </div>
+            )}
+
+            <div className="modal-detail-grid">
+              {/* Benefits */}
+              <div>
+                <strong>Potential Benefits &amp; Financial Support</strong>
+                <span>
+                  {typeof selectedScheme.benefits === "object" ? (
+                    <>
+                      <strong style={{ display: "block", color: "#246e2b", fontSize: "16px", fontWeight: 750 }}>{selectedScheme.benefits.amount}</strong>
+                      <small style={{ display: "block", marginTop: "4px", fontSize: "13px", color: "#50614e" }}>{selectedScheme.benefits.frequency}</small>
+                      {selectedScheme.benefits.transfer_mode && (
+                        <small style={{ display: "block", marginTop: "3px", fontSize: "12.5px", color: "#50614e" }}>Mode: {selectedScheme.benefits.transfer_mode}</small>
+                      )}
+                      {selectedScheme.benefits.additional_support && (
+                        <small style={{ display: "block", marginTop: "3px", fontSize: "12.5px", color: "#50614e" }}>{selectedScheme.benefits.additional_support}</small>
+                      )}
+                    </>
+                  ) : (
+                    selectedScheme.benefits
+                  )}
+                </span>
+              </div>
+
+              {/* Match Guidance */}
+              <div>
+                <strong>Farmly Match Assessment</strong>
+                <span>
+                  <i
+                    style={{ fontStyle: "normal", fontWeight: 700 }}
+                    className={
+                      selectedScheme.fit === "Eligibility confirmed"
+                        ? "match-positive"
+                        : "match-caution"
+                    }
+                  >
+                    {selectedScheme.fit || "Potentially relevant"}
+                  </i>
+                  <span style={{ display: "block", marginTop: "4px" }}>
+                    {selectedScheme.match_reasons?.[0] || "Matches location and crop criteria."}
+                  </span>
+                </span>
+              </div>
+
+              {/* Eligibility Criteria */}
+              <div className="modal-detail-full">
+                <strong>Official Eligibility Criteria</strong>
+                <ul className="modal-list-box">
+                  {selectedScheme.eligibility_criteria.map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Required Documents */}
+              <div className="modal-detail-full">
+                <strong>Mandatory Documents for Application</strong>
+                <ul className="modal-list-box">
+                  {selectedScheme.required_documents.map((doc, idx) => (
+                    <li key={idx}>{doc}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Step by Step Application Procedure */}
+              <div className="modal-detail-full">
+                <strong>How to Apply (Official Procedure)</strong>
+                <ol className="modal-process-steps">
+                  {selectedScheme.application_process.map((step, idx) => (
+                    <li className="modal-process-step" key={idx}>
+                      <span className="modal-step-badge">{idx + 1}</span>
+                      <span>{step.replace(/^Step \d+:\s*/, "")}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+
+            {/* Disclaimer and Verification Attribution */}
+            <div className="modal-disclaimer">
+              <Info size={15} />
+              <span>
+                Verified from {selectedScheme.source_name} on {formatVerifiedDate(selectedScheme.last_verified_at)}. Final approval determined by government department.
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="modal-actions-row">
+              <a
+                className="primary-btn"
+                href={selectedScheme.official_application_url || selectedScheme.official_information_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Apply on Official Portal <ExternalLink size={14} />
+              </a>
+              <a
+                className="outline-btn"
+                href={selectedScheme.official_information_url || selectedScheme.source_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Official Guidelines <ExternalLink size={14} />
+              </a>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  )
 }
+
 
 export function ProfileScreen({ profile, onSave }: { profile: FarmerProfile; onSave: (profile: FarmerProfile) => void }) {
   const [form, setForm] = useState(profile)
