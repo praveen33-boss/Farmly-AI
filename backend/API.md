@@ -398,7 +398,7 @@ Creates a new farmer account using Supabase Auth (Email + Password).
 ```json
 {
   "message": "Farmer account created successfully.",
-  "access_token": "eyJhbGciOi...",
+  "access_token": "<access-token>",
   "refresh_token": "...",
   "token_type": "Bearer",
   "user": {
